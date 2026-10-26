@@ -15,6 +15,7 @@ import {
     RoleSelectMenuBuilder,
     MentionableSelectMenuBuilder,
     ChannelSelectMenuBuilder,
+    InteractionWebhook,
 } from 'discord.js';
 import { EventEmitter } from 'events';
 import type {
@@ -25,6 +26,7 @@ import type {
     MenuMessageOptions,
     NavigationAction,
     CompatibleMessageOptions,
+    MenuMessageController,
 } from './types';
 
 const NAV_PREFIX = 'menu:navigation';
@@ -80,6 +82,7 @@ export class Menu extends EventEmitter {
     private pageChangeQueue: Promise<void> = Promise.resolve();
 
     private message: Message | null = null;
+    private messageController: MenuMessageController | null = null;
     private collector: ReturnType<
         Message['createMessageComponentCollector']
     > | null = null;
@@ -231,7 +234,13 @@ export class Menu extends EventEmitter {
         this.emit('menuSent');
 
         const message = await interaction.fetchReply();
-        return await this.initializeMessage(message);
+
+        return await this.initializeMessage(
+            message,
+            delivery.ephemeral
+                ? this.createWebhookController(interaction.webhook, '@original')
+                : this.createMessageController(message),
+        );
     }
 
     /**
@@ -261,7 +270,12 @@ export class Menu extends EventEmitter {
 
         this.emit('menuSent');
 
-        return await this.initializeMessage(message);
+        return await this.initializeMessage(
+            message,
+            delivery.ephemeral
+                ? this.createWebhookController(interaction.webhook, '@original')
+                : this.createMessageController(message),
+        );
     }
 
     /**
@@ -285,7 +299,10 @@ export class Menu extends EventEmitter {
 
         this.emit('menuSent');
 
-        return await this.initializeMessage(message);
+        return await this.initializeMessage(
+            message,
+            this.createMessageController(message),
+        );
     }
 
     /**
@@ -356,6 +373,27 @@ export class Menu extends EventEmitter {
         this.emit('delete');
     }
 
+    private createWebhookController(
+        webhook: InteractionWebhook,
+        target: '@original' | string,
+    ): MenuMessageController {
+        return {
+            edit: (options) =>
+                webhook.editMessage(
+                    target,
+                    options as Parameters<InteractionWebhook['editMessage']>[1],
+                ),
+            delete: () => webhook.deleteMessage(target),
+        };
+    }
+
+    private createMessageController(message: Message): MenuMessageController {
+        return {
+            edit: (options) => message.edit(options),
+            delete: () => message.delete(),
+        };
+    }
+
     private async performPageChange(index: number): Promise<void> {
         if (!this.message) {
             throw new Error('Start the menu before changing pages.');
@@ -373,11 +411,15 @@ export class Menu extends EventEmitter {
             throw new RangeError(`Invalid page index: ${index}.`);
         }
 
-        const message = this.message;
         const page = this.pages[index]!;
+        const controller = this.messageController;
+
+        if (!controller) {
+            throw new Error('The menu message controller is unavailable.');
+        }
 
         try {
-            await message.edit({
+            await controller.edit({
                 embeds: [page.embed],
                 components: this.buildComponents(index),
             });
@@ -605,13 +647,17 @@ export class Menu extends EventEmitter {
         await message.edit({ components: rows });
     }
 
-    private async initializeMessage(message: Message): Promise<Message> {
+    private async initializeMessage(
+        message: Message,
+        messageController: MenuMessageController,
+    ): Promise<Message> {
         if (this.started) {
             throw new Error('This menu has already been started.');
         }
 
         this.started = true;
         this.message = message;
+        this.messageController = messageController;
 
         this.collector = message.createMessageComponentCollector({
             time: this.timeout,

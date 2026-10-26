@@ -6,6 +6,7 @@ import type {
     MessageCreateOptions,
     InteractionReplyOptions,
     InteractionEditReplyOptions,
+    MessageEditOptions,
 } from 'discord.js';
 import type { Menu } from './Menu';
 
@@ -153,3 +154,8 @@ export type NavigationAction = 'previous' | 'next';
 export type CompatibleMessageOptions = InteractionReplyOptions &
     InteractionEditReplyOptions &
     MessageCreateOptions;
+
+export type MenuMessageController = {
+    edit(options: MessageEditOptions): Promise<unknown>;
+    delete(): Promise<unknown>;
+};
