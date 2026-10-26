@@ -89,6 +89,8 @@ export class Menu extends EventEmitter {
     /**
      * Creates a menu and validates its configuration.
      *
+     * @param name Name of the menu
+     *
      * @param options - Configuration defining the owner, pages, timeout,
      *                  access policy, and optional callbacks.
      *
