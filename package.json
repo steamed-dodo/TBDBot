@@ -16,7 +16,7 @@
   ],
   "scripts": {
     "clean": "rimraf dist",
-    "build": "npm run clean && npm run build:types",
+    "build": "npm run clean && npm run build:js && npm run build:types",
     "build:js": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js",
     "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
     "dev": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js --watch",
