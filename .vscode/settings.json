@@ -3,5 +3,7 @@
   "[typescript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
 },
-"prettier.configPath": ".prettierrc.json"
+"prettier.configPath": ".prettierrc.json",
+"prettier.useTabs": true,
+"prettier.tabWidth": 4
 }
