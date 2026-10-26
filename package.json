@@ -1,23 +1,39 @@
 {
-  "name": "menubuilder",
+  "name": "@my-lib/utils",
   "version": "0.1.0",
-  "description": "menu builder for discord",
-  "license": "ISC",
-  "author": "",
-  "type": "commonjs",
-  "main": "index.js",
+  "description": "reusable utilities for discord.js",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "format": "prettier --write index.ts",
-    "format:check": "prettier --check index.ts"
+    "clean": "rimraf dist",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepack": "npm run build",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\""
   },
   "dependencies": {
-    "discord.js": "^14.27.0",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15"
   },
+  "peerDependencies": {
+    "discord.js": "^14.27.0"
+  },
   "devDependencies": {
     "prettier": "^3.9.10",
-    "typescript": "^7.0.2"
+    "rimraf": "^6.1.3",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   }
 }

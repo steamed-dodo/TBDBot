@@ -1,0 +1,14 @@
+TODO:
+Test                            Expected result
+Empty pages                     Constructor rejects the configuration
+Duplicate page names            Constructor rejects the configuration
+More than four custom rows      Constructor rejects the configuration
+Initial page                    First embed and correct buttons are sent
+Previous on first page          Button is disabled and navigation stays in place
+Next on last page               Button is disabled and navigation stays in place
+Unauthorized user               Interaction is rejected
+Custom handler                  Handler receives the interaction and menu
+Stop                            Collector ends and components are disabled
+Timeout                         Components are disabled or message is deleted, according to configuration
+Delete failure                  Error is reported and state remains consistent with the documented contract
+Concurrent setPage() calls      Message edits don't produce an inconsistent page index
