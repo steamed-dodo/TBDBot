@@ -25,7 +25,7 @@ import type {
     MenuMessageOptions,
     NavigationAction,
     CompatibleMessageOptions,
-} from './types.js';
+} from './types';
 
 const NAV_PREFIX = 'menu:navigation';
 
