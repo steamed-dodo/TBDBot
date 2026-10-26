@@ -120,7 +120,7 @@ interface MenuOptions {
  *
  * - `caller-only`: Only the user who owns the menu may interact.
  * - `everyone`: Any user may interact.
- * - `custom`: Access is determined by a user-provided filter.
+ * - `custom`: Access is determined by a user-provided filter. If the filter fails it will fallback to caller/only behaviour
  */
 type MenuAccess =
     | { type: 'caller-only' }
@@ -362,7 +362,7 @@ class Menu extends EventEmitter {
         }
 
         const message = await interaction.fetchReply();
-        return this.initializeMessage(message);
+        return await this.initializeMessage(message);
     }
 
     /**
@@ -390,7 +390,7 @@ class Menu extends EventEmitter {
                     : MessageFlags.Ephemeral,
         });
 
-        return this.initializeMessage(message);
+        return await this.initializeMessage(message);
     }
 
     /**
@@ -412,7 +412,7 @@ class Menu extends EventEmitter {
         }
         const message = await channel.send(this.buildPayload(messageOptions));
 
-        return this.initializeMessage(message);
+        return await this.initializeMessage(message);
     }
 
     /**
@@ -445,6 +445,7 @@ class Menu extends EventEmitter {
      * @returns A promise that resolves when the stop operation completes.
      */
     public async stop(): Promise<void> {
+        if (!this.started) return;
         if (this.stopped) return;
 
         this.stopped = true;
@@ -472,11 +473,12 @@ class Menu extends EventEmitter {
         this.collector?.stop('menu_deleted');
 
         const message = this.message;
-        this.message = null;
 
         if (message) {
             await message.delete();
         }
+
+        this.message = null;
 
         this.emit('delete');
     }
@@ -556,7 +558,23 @@ class Menu extends EventEmitter {
             return;
         }
 
-        await handler(interaction, this);
+        try {
+            await handler(interaction, this);
+        } catch (error) {
+            this.emit('menuError', error);
+
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction
+                    .reply({
+                        content:
+                            'An error occurred while handling this interaction.',
+                        ephemeral: true,
+                    })
+                    .catch((replyError: unknown) => {
+                        this.emit('menuError', replyError);
+                    });
+            }
+        }
     }
 
     private async canInteract(
@@ -570,7 +588,12 @@ class Menu extends EventEmitter {
                 return true;
 
             case 'custom':
-                return this.access.filter(interaction);
+                try {
+                    return await this.access.filter(interaction);
+                } catch (error) {
+                    this.emit('menuError', error);
+                    return interaction.user.id === this.userId;
+                }
         }
     }
 
@@ -714,7 +737,7 @@ class Menu extends EventEmitter {
         await message.edit({ components: rows });
     }
 
-    private initializeMessage(message: Message): Message {
+    private async initializeMessage(message: Message): Promise<Message> {
         if (this.started) {
             throw new Error('This menu has already been started.');
         }
@@ -752,9 +775,7 @@ class Menu extends EventEmitter {
             }
         });
 
-        void this.notifyPageChange().catch((error: unknown) =>
-            this.emit('menuError', error),
-        );
+        await this.notifyPageChange();
 
         return message;
     }
