@@ -48,6 +48,9 @@ const NAV_PREFIX = 'menu:navigation';
  * Emitted after the page-change callback completes successfully.
  * Receives the active {@link MenuPage} and its zero-based index.
  *
+ * @event menuSent
+ * Emitted when the menu is sent through either .reply(), .followUp() or .send().
+ *
  * @event stop
  * Emitted when the menu is explicitly stopped.
  *
@@ -63,6 +66,8 @@ const NAV_PREFIX = 'menu:navigation';
  * Receives the error as its argument.
  */
 export class Menu extends EventEmitter {
+    readonly name: string;
+
     private readonly userId: string;
     private readonly pages: readonly MenuPage[];
     private readonly timeout: number;
@@ -93,7 +98,7 @@ export class Menu extends EventEmitter {
      * @throws {Error} If page names are duplicated or a custom component uses
      *                  the reserved navigation prefix.
      */
-    constructor(options: MenuOptions) {
+    constructor(name: string, options: MenuOptions) {
         super();
 
         if (options.pages.length === 0) {
@@ -103,6 +108,8 @@ export class Menu extends EventEmitter {
         if (!options.userId.trim()) {
             throw new TypeError('userId must be present.');
         }
+
+        this.name = name;
 
         this.userId = options.userId;
         this.pages = options.pages;
@@ -219,6 +226,8 @@ export class Menu extends EventEmitter {
             });
         }
 
+        this.emit('menuSent');
+
         const message = await interaction.fetchReply();
         return await this.initializeMessage(message);
     }
@@ -248,6 +257,8 @@ export class Menu extends EventEmitter {
                     : MessageFlags.Ephemeral,
         });
 
+        this.emit('menuSent');
+
         return await this.initializeMessage(message);
     }
 
@@ -269,6 +280,8 @@ export class Menu extends EventEmitter {
             throw new Error('This channel is not sendable.');
         }
         const message = await channel.send(this.buildPayload(messageOptions));
+
+        this.emit('menuSent');
 
         return await this.initializeMessage(message);
     }
