@@ -7,7 +7,7 @@ import type {
     InteractionReplyOptions,
     InteractionEditReplyOptions,
 } from 'discord.js';
-import type { Menu } from './Menu.js';
+import type { Menu } from './Menu';
 
 /**
  * Represents a single page within a {@link Menu}.

@@ -16,23 +16,24 @@
   ],
   "scripts": {
     "clean": "rimraf dist",
-    "build": "npm run clean && tsc -p tsconfig.json",
+    "build": "npm run clean && npm run build:types",
+    "build:js": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js",
+    "build:types": "tsc -p tsconfig.json --emitDeclarationsOnly",
+    "dev": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepack": "npm run build",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\""
   },
-  "dependencies": {
-    "esbuild": "^0.28.2",
-    "tsx": "^4.23.15"
-  },
   "peerDependencies": {
     "discord.js": "^14.27.0"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "prettier": "^3.9.10",
     "rimraf": "^6.1.3",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }

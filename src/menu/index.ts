@@ -1,4 +1,4 @@
-export { Menu } from './Menu.js';
+export { Menu } from './Menu';
 
 export type {
     MenuPage,
