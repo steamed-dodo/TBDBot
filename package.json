@@ -7,7 +7,9 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "format": "prettier --write index.ts",
+    "format:check": "prettier --check index.ts"
   },
   "dependencies": {
     "discord.js": "^14.27.0",
@@ -15,6 +17,7 @@
     "tsx": "^4.23.15"
   },
   "devDependencies": {
+    "prettier": "^3.9.10",
     "typescript": "^7.0.2"
   }
 }
