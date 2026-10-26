@@ -142,7 +142,7 @@ export type MenuMessageOptions = Omit<
 >;
 
 /** Navigation actions supported by the menu's built-in buttons. */
-export type NavigationAction = 'previous' | 'next' | 'stop';
+export type NavigationAction = 'previous' | 'next';
 
 /**
  * Combined message option type used internally by the menu.

@@ -465,7 +465,7 @@ export class Menu extends EventEmitter {
             NAV_PREFIX.length,
         ) as NavigationAction;
 
-        if (action !== 'previous' && action !== 'next' && action !== 'stop') {
+        if (action !== 'previous' && action !== 'next') {
             await interaction.deferUpdate();
             return;
         }
@@ -483,10 +483,6 @@ export class Menu extends EventEmitter {
                 if (this.pageIndex < this.pages.length - 1) {
                     await this.setPage(this.pageIndex + 1);
                 }
-                break;
-
-            case 'stop':
-                await this.stop();
                 break;
         }
     }
@@ -516,10 +512,6 @@ export class Menu extends EventEmitter {
                     .setLabel('Next')
                     .setStyle(ButtonStyle.Primary)
                     .setDisabled(index === this.pages.length - 1),
-                new ButtonBuilder()
-                    .setCustomId(`${NAV_PREFIX}stop`)
-                    .setLabel('Stop')
-                    .setStyle(ButtonStyle.Danger),
             );
 
         const pageRows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = (
