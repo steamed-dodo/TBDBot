@@ -150,8 +150,9 @@ export class Menu extends EventEmitter {
             for (const row of page.components ?? []) {
                 for (const component of row.components) {
                     if (
-                        'customId' in component &&
-                        component.customId?.startsWith(NAV_PREFIX)
+                        'custom_id' in component.data &&
+                        typeof component.data.custom_id === 'string' &&
+                        component.data.custom_id.startsWith(NAV_PREFIX)
                     ) {
                         throw new Error(
                             `Custom component IDs must not use "${NAV_PREFIX}".`,
