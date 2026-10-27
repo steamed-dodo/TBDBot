@@ -1,12 +1,12 @@
 import type {
     EmbedBuilder,
-    ActionRow,
-    MessageActionRowComponent,
     MessageComponentInteraction,
     MessageCreateOptions,
     InteractionReplyOptions,
     InteractionEditReplyOptions,
     MessageEditOptions,
+    MessageActionRowComponentBuilder,
+    ActionRowBuilder,
 } from 'discord.js';
 import type { Menu } from './Menu';
 
@@ -30,7 +30,7 @@ export interface MenuPage {
      * A maximum of four custom rows is permitted because the menu reserves
      * one additional row for its built-in navigation buttons.
      */
-    readonly components?: readonly ActionRow<MessageActionRowComponent>[];
+    readonly components?: readonly ActionRowBuilder<MessageActionRowComponentBuilder>[];
 
     /**
      * Handles interactions originating from this page's custom components.
