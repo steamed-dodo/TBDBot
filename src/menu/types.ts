@@ -55,6 +55,9 @@ export interface MenuPage {
  * Configuration options used to construct a {@link Menu}.
  */
 export interface MenuOptions {
+    /**Name for the menu. */
+    readonly name: string;
+
     /** Discord user ID of the menu's owner. */
     readonly userId: string;
 
