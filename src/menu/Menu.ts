@@ -47,8 +47,10 @@ const NAV_PREFIX = 'menu:navigation';
  * only once. Create a new instance if another menu message is required.
  *
  * @event pageChange
- * Emitted after the page-change callback completes successfully.
+ * Emitted after the page-change callback has been attempted.
  * Receives the active {@link MenuPage} and its zero-based index.
+ * Callback failures are reported through menuError and do not
+ * prevent this event from being emitted.
  *
  * @event menuSent
  * Emitted when the menu is sent through either .reply(), .followUp() or .send().
@@ -92,8 +94,6 @@ export class Menu extends EventEmitter {
     /**
      * Creates a menu and validates its configuration.
      *
-     * @param name Name of the menu
-     *
      * @param options - Configuration defining the owner, pages, timeout,
      *                  access policy, and optional callbacks.
      *
@@ -103,7 +103,7 @@ export class Menu extends EventEmitter {
      * @throws {Error} If page names are duplicated or a custom component uses
      *                  the reserved navigation prefix.
      */
-    constructor(name: string, options: MenuOptions) {
+    constructor(options: MenuOptions) {
         super();
 
         if (options.pages.length === 0) {
@@ -114,7 +114,7 @@ export class Menu extends EventEmitter {
             throw new TypeError('userId must be present.');
         }
 
-        this.name = name;
+        this.name = options.name;
 
         this.userId = options.userId;
         this.pages = options.pages;
@@ -198,7 +198,7 @@ export class Menu extends EventEmitter {
      * is edited instead. Otherwise, a new response is created.
      *
      * @param interaction - The interaction to respond to.
-     * @param delivery - Options controlling response visibility.
+     * @param delivery - Options controlling response visibility. (keep in mind that if the interaction was defered the visibility that was set can't be changed)
      * @param messageOptions - Additional message options, excluding embeds,
      *                         components, and flags managed by the menu.
      * @returns The Discord message associated with the menu.
@@ -209,10 +209,14 @@ export class Menu extends EventEmitter {
      */
     public async reply(
         interaction: RepliableInteraction,
-        delivery: MenuDeliveryOptions = {},
+        delivery: MenuDeliveryOptions = { ephemeral: true },
         messageOptions: MenuMessageOptions = {},
     ): Promise<Message> {
+        this.assertNotStarted();
+
         const payload = this.buildPayload(messageOptions);
+
+        const ephemeral = delivery.ephemeral ?? true;
 
         if (interaction.replied) {
             throw new Error(
@@ -225,10 +229,7 @@ export class Menu extends EventEmitter {
         } else {
             await interaction.reply({
                 ...payload,
-                flags:
-                    delivery.ephemeral === false
-                        ? undefined
-                        : MessageFlags.Ephemeral,
+                flags: ephemeral === false ? undefined : MessageFlags.Ephemeral,
             });
         }
 
@@ -238,7 +239,7 @@ export class Menu extends EventEmitter {
 
         return await this.initializeMessage(
             message,
-            delivery.ephemeral
+            ephemeral
                 ? this.createWebhookController(interaction.webhook, '@original')
                 : this.createMessageController(message),
         );
@@ -248,7 +249,7 @@ export class Menu extends EventEmitter {
      * Sends the menu as an additional interaction follow-up.
      *
      * @param interaction - The interaction to follow up on.
-     * @param delivery - Options controlling response visibility.
+     * @param delivery - Options controlling response visibility. (keep in mind that if the interaction was defered the visibility that was set can't be changed)
      * @param messageOptions - Additional message options managed by Discord.
      * @returns The resulting Discord message.
      *
@@ -256,9 +257,11 @@ export class Menu extends EventEmitter {
      */
     public async followUp(
         interaction: RepliableInteraction,
-        delivery: MenuDeliveryOptions = {},
+        delivery: MenuDeliveryOptions = { ephemeral: true },
         messageOptions: MenuMessageOptions = {},
     ): Promise<Message> {
+        this.assertNotStarted();
+
         const payload = this.buildPayload(messageOptions);
 
         const message = await interaction.followUp({
@@ -274,7 +277,7 @@ export class Menu extends EventEmitter {
         return await this.initializeMessage(
             message,
             delivery.ephemeral
-                ? this.createWebhookController(interaction.webhook, '@original')
+                ? this.createWebhookController(interaction.webhook, message.id)
                 : this.createMessageController(message),
         );
     }
@@ -293,6 +296,8 @@ export class Menu extends EventEmitter {
         channel: TextBasedChannel,
         messageOptions: MenuMessageOptions = {},
     ): Promise<Message> {
+        this.assertNotStarted();
+
         if (!channel.isSendable()) {
             throw new Error('This channel is not sendable.');
         }
@@ -331,7 +336,7 @@ export class Menu extends EventEmitter {
      * Stops the menu without deleting its message.
      *
      * Stops collecting interactions and emits the `stop` event.
-     * Existing message components are not automatically disabled.
+     * Existing message components are automatically disabled.
      *
      * @returns A promise that resolves when the stop operation completes.
      */
@@ -352,7 +357,7 @@ export class Menu extends EventEmitter {
     /**
      * Stops the menu and deletes its associated message, if present.
      *
-     * Clears the stored message reference before attempting deletion.
+     * Clears the stored message reference after attempting deletion.
      * Emits the `delete` event after the deletion operation completes.
      *
      * @returns A promise that resolves when deletion and event emission complete.
@@ -366,7 +371,7 @@ export class Menu extends EventEmitter {
         const message = this.message;
 
         if (message) {
-            await message.delete();
+            await this.messageController?.delete();
         }
 
         this.message = null;
@@ -393,6 +398,12 @@ export class Menu extends EventEmitter {
             edit: (options) => message.edit(options),
             delete: () => message.delete(),
         };
+    }
+
+    private assertNotStarted(): void {
+        if (this.started) {
+            throw new Error('This menu has already been started.');
+        }
     }
 
     private async performPageChange(index: number): Promise<void> {
@@ -582,7 +593,11 @@ export class Menu extends EventEmitter {
     }
 
     private async notifyPageChange(): Promise<void> {
-        await this.onPageChange?.(this.currentPage, this.pageIndex);
+        try {
+            await this.onPageChange?.(this.currentPage, this.pageIndex);
+        } catch (error) {
+            this.emit('menuError', error);
+        }
         this.emit('pageChange', this.currentPage, this.pageIndex);
     }
 
@@ -645,7 +660,7 @@ export class Menu extends EventEmitter {
             );
         }
 
-        await message.edit({ components: rows });
+        await this.messageController?.edit({ components: rows });
     }
 
     private async initializeMessage(
@@ -677,12 +692,9 @@ export class Menu extends EventEmitter {
             if (reason !== 'time') return;
 
             if (this.deleteOnTimeout) {
-                const message = this.message;
-                this.message = null;
-
-                void message
-                    ?.delete()
-                    .catch((error: unknown) => this.emit('menuError', error));
+                void this.delete().catch((error: unknown) =>
+                    this.emit('menuError', error),
+                );
             } else {
                 void this.disableComponents().catch((error: unknown) =>
                     this.emit('menuError', error),
