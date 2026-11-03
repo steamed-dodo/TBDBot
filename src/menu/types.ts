@@ -1,5 +1,6 @@
 import type {
     EmbedBuilder,
+    Message,
     MessageComponentInteraction,
     MessageCreateOptions,
     InteractionReplyOptions,
@@ -159,6 +160,6 @@ export type CompatibleMessageOptions = InteractionReplyOptions &
     MessageCreateOptions;
 
 export type MenuMessageController = {
-    edit(options: MessageEditOptions): Promise<unknown>;
+    edit(options: MessageEditOptions): Promise<Message>;
     delete(): Promise<unknown>;
 };
