@@ -1,6 +1,6 @@
 {
   "name": "@my-lib/utils",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "reusable utilities for discord.js",
   "type": "module",
   "main": "./dist/index.js",
