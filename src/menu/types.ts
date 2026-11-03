@@ -105,11 +105,15 @@ export interface MenuOptions {
     /**
      * Controls how the menu is navigated.
      *
-     * - `prev-next`: Previous and Next buttons.
-     * - `prev-select-next`: A page select menu with Previous and Next buttons.
-     * - `select`: A page select menu only.
+     * - `prev-next`: Previous and Next buttons. Uses one navigation row,
+     *   leaving up to four custom rows.
+     * - `prev-select-next`: A page select menu with Previous and Next
+     *   buttons. Uses two navigation rows, leaving up to three custom rows.
+     * - `select`: A page select menu only. Uses one navigation row, leaving
+     *   up to four custom rows.
      * - `wizard`: A Back button only. Pages provide their own choice
-     *   components and navigate by calling {@link Menu.setPage}.
+     *   components and navigate by calling {@link Menu.setPage}. Uses one
+     *   navigation row, leaving up to four custom rows.
      *
      * @defaultValue 'prev-next'
      */
