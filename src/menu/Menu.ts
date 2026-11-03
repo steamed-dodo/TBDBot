@@ -9,7 +9,6 @@ import {
     type MessageActionRowComponentBuilder,
     ButtonBuilder,
     ButtonStyle,
-    ComponentType,
     StringSelectMenuBuilder,
     UserSelectMenuBuilder,
     RoleSelectMenuBuilder,
@@ -195,7 +194,8 @@ export class Menu extends EventEmitter {
      * Sends the menu as the initial response to an interaction.
      *
      * If the interaction has already been deferred, its existing response
-     * is edited instead. Otherwise, a new response is created.
+     * is edited through the interaction webhook. This preserves the response
+     * visibility that was chosen when it was deferred.
      *
      * @param interaction - The interaction to respond to.
      * @param delivery - Options controlling response visibility. (keep in mind that if the interaction was defered the visibility that was set can't be changed)
@@ -239,7 +239,7 @@ export class Menu extends EventEmitter {
 
         return await this.initializeMessage(
             message,
-            ephemeral
+            interaction.deferred || ephemeral
                 ? this.createWebhookController(interaction.webhook, '@original')
                 : this.createMessageController(message),
         );
@@ -323,13 +323,7 @@ export class Menu extends EventEmitter {
      * @throws If the Discord message edit or page-change notification fails.
      */
     public async setPage(index: number): Promise<void> {
-        const operation = this.pageChangeQueue.then(() =>
-            this.performPageChange(index),
-        );
-
-        this.pageChangeQueue = operation.catch(() => undefined);
-
-        return operation;
+        return this.queuePageChange(() => this.performPageChange(index));
     }
 
     /**
@@ -406,6 +400,24 @@ export class Menu extends EventEmitter {
         }
     }
 
+    private queuePageChange(operation: () => Promise<void>): Promise<void> {
+        const queued = this.pageChangeQueue.then(operation);
+
+        this.pageChangeQueue = queued.catch(() => undefined);
+
+        return queued;
+    }
+
+    private stepPage(delta: number): Promise<void> {
+        return this.queuePageChange(async () => {
+            const target = this.pageIndex + delta;
+
+            if (target < 0 || target >= this.pages.length) return;
+
+            await this.performPageChange(target);
+        });
+    }
+
     private async performPageChange(index: number): Promise<void> {
         if (!this.message) {
             throw new Error('Start the menu before changing pages.');
@@ -431,7 +443,7 @@ export class Menu extends EventEmitter {
         }
 
         try {
-            await controller.edit({
+            this.message = await controller.edit({
                 embeds: [page.embed],
                 components: this.buildComponents(index),
             });
@@ -446,6 +458,11 @@ export class Menu extends EventEmitter {
 
         this.pageIndex = index;
 
+        if (this.stopped) {
+            await this.disableComponents();
+            return;
+        }
+
         await this.notifyPageChange();
     }
 
@@ -455,7 +472,7 @@ export class Menu extends EventEmitter {
         if (!(await this.canInteract(interaction))) {
             await interaction.reply({
                 content: 'You cannot control this menu.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return;
         }
@@ -463,7 +480,7 @@ export class Menu extends EventEmitter {
         if (this.stopped) {
             await interaction.reply({
                 content: 'This menu has ended.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return;
         }
@@ -483,7 +500,7 @@ export class Menu extends EventEmitter {
         if (!handler) {
             await interaction.reply({
                 content: 'This component has no action handler.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return;
         }
@@ -498,7 +515,7 @@ export class Menu extends EventEmitter {
                     .reply({
                         content:
                             'An error occurred while handling this interaction.',
-                        ephemeral: true,
+                        flags: MessageFlags.Ephemeral,
                     })
                     .catch((replyError: unknown) => {
                         this.emit('menuError', replyError);
@@ -543,15 +560,11 @@ export class Menu extends EventEmitter {
 
         switch (action) {
             case 'previous':
-                if (this.pageIndex > 0) {
-                    await this.setPage(this.pageIndex - 1);
-                }
+                await this.stepPage(-1);
                 break;
 
             case 'next':
-                if (this.pageIndex < this.pages.length - 1) {
-                    await this.setPage(this.pageIndex + 1);
-                }
+                await this.stepPage(1);
                 break;
         }
     }
@@ -602,65 +615,55 @@ export class Menu extends EventEmitter {
     }
 
     private async disableComponents(): Promise<void> {
-        const message = this.message;
+        const controller = this.messageController;
 
-        if (!message) return;
+        if (!this.message || !controller) return;
 
-        const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
+        const rows = this.buildComponents(this.pageIndex).map((row) => {
+            const components = row.components.map((component) =>
+                this.disableComponent(component),
+            );
 
-        for (const componentRow of message.components) {
-            if (componentRow.type !== ComponentType.ActionRow) {
-                throw new Error(
-                    `Unsupported top-level component type: ${componentRow.type}`,
-                );
-            }
+            return new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+                components,
+            );
+        });
 
-            const components: MessageActionRowComponentBuilder[] =
-                componentRow.components.map((component) => {
-                    switch (component.type) {
-                        case ComponentType.Button:
-                            return ButtonBuilder.from(component).setDisabled(
-                                true,
-                            );
+        this.message = await controller.edit({ components: rows });
+    }
 
-                        case ComponentType.StringSelect:
-                            return StringSelectMenuBuilder.from(
-                                component,
-                            ).setDisabled(true);
+    private disableComponent(
+        component: MessageActionRowComponentBuilder,
+    ): MessageActionRowComponentBuilder {
+        if (component instanceof ButtonBuilder) {
+            return ButtonBuilder.from(component).setDisabled(true);
+        }
 
-                        case ComponentType.UserSelect:
-                            return UserSelectMenuBuilder.from(
-                                component,
-                            ).setDisabled(true);
+        if (component instanceof StringSelectMenuBuilder) {
+            return StringSelectMenuBuilder.from(component).setDisabled(true);
+        }
 
-                        case ComponentType.RoleSelect:
-                            return RoleSelectMenuBuilder.from(
-                                component,
-                            ).setDisabled(true);
+        if (component instanceof UserSelectMenuBuilder) {
+            return UserSelectMenuBuilder.from(component).setDisabled(true);
+        }
 
-                        case ComponentType.MentionableSelect:
-                            return MentionableSelectMenuBuilder.from(
-                                component,
-                            ).setDisabled(true);
+        if (component instanceof RoleSelectMenuBuilder) {
+            return RoleSelectMenuBuilder.from(component).setDisabled(true);
+        }
 
-                        case ComponentType.ChannelSelect:
-                            return ChannelSelectMenuBuilder.from(
-                                component,
-                            ).setDisabled(true);
-
-                        default:
-                            throw new Error(`Unsupported component type`);
-                    }
-                });
-
-            rows.push(
-                new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-                    components,
-                ),
+        if (component instanceof MentionableSelectMenuBuilder) {
+            return MentionableSelectMenuBuilder.from(component).setDisabled(
+                true,
             );
         }
 
-        await this.messageController?.edit({ components: rows });
+        if (component instanceof ChannelSelectMenuBuilder) {
+            return ChannelSelectMenuBuilder.from(component).setDisabled(true);
+        }
+
+        throw new Error(
+            `Unsupported component type: ${component.data.type ?? 'unknown'}`,
+        );
     }
 
     private async initializeMessage(
@@ -688,6 +691,17 @@ export class Menu extends EventEmitter {
         this.collector.on('end', (_collected, reason) => {
             this.stopped = true;
             this.emit('end');
+
+            if (
+                reason === 'messageDelete' ||
+                reason === 'channelDelete' ||
+                reason === 'threadDelete' ||
+                reason === 'guildDelete'
+            ) {
+                this.message = null;
+                this.messageController = null;
+                return;
+            }
 
             if (reason !== 'time') return;
 
