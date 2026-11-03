@@ -1,10 +1,16 @@
-# Adapter Layer Plan
+# Framework and Adapter Plan
 
-This document outlines a plan to decouple `@my-lib/utils` from `discord.js` so the library can eventually support `@discordjs/core` (and other backends) without rewriting Menu, Panel, and Wizard.
+This document outlines a plan to evolve `@my-lib/utils` from a Discord.js utility library into a full Discord bot framework built on `@discordjs/core`, while keeping the current public APIs usable during the transition.
 
-## Goal
+## Long-term vision
 
-Introduce an adapter interface that captures the Discord operations the library actually needs. discord.js remains the default adapter; a core adapter can be added later without changing public APIs.
+- A framework, not just utilities: command registration, event routing, configuration, and lifecycle management.
+- Built on `@discordjs/core` + `@discordjs/rest` + `@discordjs/ws` for performance and control.
+- Public APIs (Menu, Panel, Wizard) remain stable; internals move to core-based implementations.
+
+## Transition strategy
+
+The discord.js adapter is an **internal** implementation detail, not a public API. It exists only to let Menu/Panel/Wizard keep working while the framework migrates. Consumers never interact with it directly.
 
 ## Current discord.js usage
 
@@ -14,7 +20,7 @@ Audited from `src/`:
 - **Wizard** (`src/wizard/Wizard.ts`, `src/wizard/types.ts`): same delivery/controller patterns plus interaction fetch replies.
 - **Panel** (`src/panel/Panel.ts`, `src/panel/PanelManager.ts`, `src/panel/types.ts`): client, interactions, messages, channels, message components, embeds.
 
-## Proposed adapter interface
+## Proposed internal adapter interface
 
 Create `src/adapter/DiscordAdapter.ts`:
 
@@ -69,3 +75,20 @@ Handles (`MessageHandle`, `InteractionHandle`, `ChannelHandle`) are opaque strin
 - Should handles be branded objects or strings?
 - Should the adapter own component builders, or should builders stay in the library?
 - How to expose adapter selection to consumers (constructor option vs. global config)?
+
+## Framework features (future)
+
+- **Command framework**: declarative command definitions, permission checks, and automatic registration.
+- **Event router**: typed event handlers with middleware.
+- **Configuration**: validated, environment-aware config (already partially present in testbot).
+- **Persistence**: pluggable stores (memory, JSON, database) for panels and framework state.
+- **Observability**: structured logging and metrics hooks.
+- **Testing utilities**: mock adapters and interaction factories for unit tests.
+
+## Phased rollout
+
+1. Internal adapter interface + discord.js implementation (no public changes).
+2. Migrate Menu, Wizard, Panel to the adapter.
+3. Add core adapter and switch testbot to it.
+4. Introduce framework-level command/event/config features on top of the core adapter.
+5. Deprecate discord.js peer dependency once core adapter reaches parity.
