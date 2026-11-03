@@ -101,7 +101,30 @@ export interface MenuOptions {
      * @defaultValue { type: 'caller-only' }
      */
     readonly access?: MenuAccess;
+
+    /**
+     * Controls how the menu is navigated.
+     *
+     * - `prev-next`: Previous and Next buttons.
+     * - `prev-select-next`: A page select menu with Previous and Next buttons.
+     * - `select`: A page select menu only.
+     * - `wizard`: A Back button only. Pages provide their own choice
+     *   components and navigate by calling {@link Menu.setPage}.
+     *
+     * @defaultValue 'prev-next'
+     */
+    readonly navigation?: MenuNavigation;
 }
+
+/**
+ * Navigation styles supported by a {@link Menu}.
+ *
+ * `wizard` menus are stateful choice flows. Each page displays its own choice
+ * components, while the menu supplies the Back button and tracks visited pages
+ * so Back returns through the flow.
+ */
+export type MenuNavigation =
+    'prev-next' | 'prev-select-next' | 'select' | 'wizard';
 
 /**
  * Controls which users may interact with a menu.
@@ -147,7 +170,7 @@ export type MenuMessageOptions = Omit<
 >;
 
 /** Navigation actions supported by the menu's built-in buttons. */
-export type NavigationAction = 'previous' | 'next';
+export type NavigationAction = 'previous' | 'next' | 'back';
 
 /**
  * Combined message option type used internally by the menu.

@@ -15,6 +15,7 @@ import {
     MentionableSelectMenuBuilder,
     ChannelSelectMenuBuilder,
     InteractionWebhook,
+    type StringSelectMenuInteraction,
 } from 'discord.js';
 import { EventEmitter } from 'events';
 import type {
@@ -23,12 +24,17 @@ import type {
     MenuAccess,
     MenuDeliveryOptions,
     MenuMessageOptions,
+    MenuNavigation,
     NavigationAction,
     CompatibleMessageOptions,
     MenuMessageController,
 } from './types';
 
 const NAV_PREFIX = 'menu:navigation';
+const NAV_PREVIOUS = `${NAV_PREFIX}previous`;
+const NAV_NEXT = `${NAV_PREFIX}next`;
+const NAV_SELECT = `${NAV_PREFIX}select`;
+const NAV_BACK = `${NAV_PREFIX}back`;
 
 /**
  * Manages a paginated Discord menu with interactive navigation controls.
@@ -76,10 +82,12 @@ export class Menu extends EventEmitter {
     private readonly timeout: number;
     private readonly deleteOnTimeout: boolean;
     private readonly onPageChange: MenuOptions['onPageChange'];
+    private readonly navigation: MenuNavigation;
 
     private readonly access: MenuAccess;
 
     private pageIndex = 0;
+    private readonly pageHistory: number[] = [];
     private pageChangeQueue: Promise<void> = Promise.resolve();
 
     private message: Message | null = null;
@@ -120,6 +128,7 @@ export class Menu extends EventEmitter {
         this.timeout = options.timeout ?? 180_000;
         this.deleteOnTimeout = options.deleteOnTimeout ?? false;
         this.onPageChange = options.onPageChange;
+        this.navigation = options.navigation ?? 'prev-next';
 
         this.access = options.access ?? { type: 'caller-only' };
 
@@ -127,6 +136,8 @@ export class Menu extends EventEmitter {
             throw new RangeError('timeout must be a positive number.');
         }
 
+        const navigationRows = this.navigation === 'prev-select-next' ? 2 : 1;
+        const maxCustomRows = 5 - navigationRows;
         const names = new Set<string>();
 
         for (const page of this.pages) {
@@ -140,9 +151,9 @@ export class Menu extends EventEmitter {
 
             names.add(page.name);
 
-            if ((page.components?.length ?? 0) > 4) {
+            if ((page.components?.length ?? 0) > maxCustomRows) {
                 throw new RangeError(
-                    `Pages can have at most four custom rows, "${page.name}" has ${page.components?.length}`,
+                    `Pages can have at most ${maxCustomRows} custom rows, "${page.name}" has ${page.components?.length}`,
                 );
             }
 
@@ -327,6 +338,19 @@ export class Menu extends EventEmitter {
     }
 
     /**
+     * Returns to the previously visited page.
+     *
+     * This is primarily useful for `wizard` menus, where the built-in Back
+     * button uses the recorded navigation history. If no previous page exists,
+     * the call does nothing.
+     *
+     * @returns A promise that resolves when the page change completes.
+     */
+    public async back(): Promise<void> {
+        return this.stepBack();
+    }
+
+    /**
      * Stops the menu without deleting its message.
      *
      * Stops collecting interactions and emits the `stop` event.
@@ -418,7 +442,25 @@ export class Menu extends EventEmitter {
         });
     }
 
-    private async performPageChange(index: number): Promise<void> {
+    private stepBack(): Promise<void> {
+        return this.queuePageChange(async () => {
+            const previous = this.pageHistory.pop();
+
+            if (previous === undefined) return;
+
+            try {
+                await this.performPageChange(previous, false);
+            } catch (error) {
+                this.pageHistory.push(previous);
+                throw error;
+            }
+        });
+    }
+
+    private async performPageChange(
+        index: number,
+        recordHistory = true,
+    ): Promise<void> {
         if (!this.message) {
             throw new Error('Start the menu before changing pages.');
         }
@@ -442,12 +484,23 @@ export class Menu extends EventEmitter {
             throw new Error('The menu message controller is unavailable.');
         }
 
+        const previousIndex = this.pageIndex;
+        const shouldRecordHistory = recordHistory && index !== previousIndex;
+
+        if (shouldRecordHistory) {
+            this.pageHistory.push(previousIndex);
+        }
+
         try {
             this.message = await controller.edit({
                 embeds: [page.embed],
                 components: this.buildComponents(index),
             });
         } catch (error) {
+            if (shouldRecordHistory) {
+                this.pageHistory.pop();
+            }
+
             throw new Error(
                 'There was an issue updating the message to new page',
                 {
@@ -486,12 +539,17 @@ export class Menu extends EventEmitter {
         }
 
         if (interaction.customId.startsWith(NAV_PREFIX)) {
-            if (!interaction.isButton()) {
-                await interaction.deferUpdate();
+            if (interaction.isButton()) {
+                await this.handleNavigation(interaction);
                 return;
             }
 
-            await this.handleNavigation(interaction);
+            if (interaction.isStringSelectMenu()) {
+                await this.handlePageSelect(interaction);
+                return;
+            }
+
+            await interaction.deferUpdate();
             return;
         }
 
@@ -551,7 +609,7 @@ export class Menu extends EventEmitter {
             NAV_PREFIX.length,
         ) as NavigationAction;
 
-        if (action !== 'previous' && action !== 'next') {
+        if (action !== 'previous' && action !== 'next' && action !== 'back') {
             await interaction.deferUpdate();
             return;
         }
@@ -566,7 +624,30 @@ export class Menu extends EventEmitter {
             case 'next':
                 await this.stepPage(1);
                 break;
+
+            case 'back':
+                await this.stepBack();
+                break;
         }
+    }
+
+    private async handlePageSelect(
+        interaction: StringSelectMenuInteraction,
+    ): Promise<void> {
+        const value = interaction.values[0];
+        const index = Number(value);
+
+        await interaction.deferUpdate();
+
+        if (
+            !Number.isInteger(index) ||
+            index < 0 ||
+            index >= this.pages.length
+        ) {
+            return;
+        }
+
+        await this.setPage(index);
     }
 
     private buildPayload(
@@ -582,27 +663,83 @@ export class Menu extends EventEmitter {
     private buildComponents(
         index: number = this.pageIndex,
     ): ActionRowBuilder<MessageActionRowComponentBuilder>[] {
-        const navigation =
-            new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`${NAV_PREFIX}previous`)
-                    .setLabel('Previous')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setDisabled(index === 0),
-                new ButtonBuilder()
-                    .setCustomId(`${NAV_PREFIX}next`)
-                    .setLabel('Next')
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(index === this.pages.length - 1),
-            );
-
         const pageRows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = (
             this.pages[index]!.components ?? []
         ).map((row) =>
             ActionRowBuilder.from<MessageActionRowComponentBuilder>(row),
         );
 
-        return [...pageRows, navigation];
+        return [...pageRows, ...this.buildNavigationRows(index)];
+    }
+
+    private buildNavigationRows(
+        index: number,
+    ): ActionRowBuilder<MessageActionRowComponentBuilder>[] {
+        switch (this.navigation) {
+            case 'select':
+                return [this.buildPageSelect(index)];
+
+            case 'prev-select-next':
+                return [
+                    this.buildPageSelect(index),
+                    this.buildPreviousNextButtons(index),
+                ];
+
+            case 'wizard':
+                return [this.buildBackButton()];
+
+            case 'prev-next':
+            default:
+                return [this.buildPreviousNextButtons(index)];
+        }
+    }
+
+    private buildPreviousNextButtons(
+        index: number,
+    ): ActionRowBuilder<MessageActionRowComponentBuilder> {
+        return new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(NAV_PREVIOUS)
+                .setLabel('Previous')
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(index === 0),
+            new ButtonBuilder()
+                .setCustomId(NAV_NEXT)
+                .setLabel('Next')
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(index === this.pages.length - 1),
+        );
+    }
+
+    private buildBackButton(): ActionRowBuilder<MessageActionRowComponentBuilder> {
+        return new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(NAV_BACK)
+                .setLabel('Back')
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(this.pageHistory.length === 0),
+        );
+    }
+
+    private buildPageSelect(
+        index: number,
+    ): ActionRowBuilder<MessageActionRowComponentBuilder> {
+        const select = new StringSelectMenuBuilder()
+            .setCustomId(NAV_SELECT)
+            .setPlaceholder('Go to page')
+            .setMinValues(1)
+            .setMaxValues(1)
+            .addOptions(
+                this.pages.map((page, pageIndex) => ({
+                    label: page.name,
+                    value: String(pageIndex),
+                    default: pageIndex === index,
+                })),
+            );
+
+        return new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+            select,
+        );
     }
 
     private async notifyPageChange(): Promise<void> {

@@ -6,4 +6,5 @@ export type {
     MenuAccess,
     MenuDeliveryOptions,
     MenuMessageOptions,
+    MenuNavigation,
 } from './types.js';

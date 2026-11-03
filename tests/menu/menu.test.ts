@@ -11,6 +11,7 @@ import {
     MessageComponentInteraction,
     MessageFlags,
     RepliableInteraction,
+    StringSelectMenuBuilder,
     TextBasedChannel,
 } from 'discord.js';
 import { EventEmitter } from 'events';
@@ -131,6 +132,8 @@ function makeComponentInteraction(
         customId?: string;
         userId?: string;
         isButton?: boolean;
+        isStringSelectMenu?: boolean;
+        values?: string[];
         replied?: boolean;
         deferred?: boolean;
     } = {},
@@ -141,6 +144,8 @@ function makeComponentInteraction(
         replied: overrides.replied ?? false,
         deferred: overrides.deferred ?? false,
         isButton: () => overrides.isButton ?? false,
+        isStringSelectMenu: () => overrides.isStringSelectMenu ?? false,
+        values: overrides.values ?? [],
         reply: vi.fn().mockResolvedValue(undefined),
         deferUpdate: vi.fn().mockResolvedValue(undefined),
     } as unknown as ComponentInteractionMock;
@@ -173,7 +178,7 @@ describe('Menu constructor', () => {
         };
 
         expect(() => new Menu(makeOptions({ pages: [invalidPage] }))).toThrow(
-            'Pages can have at most four custom rows, "page-one" has 5',
+            'Pages can have at most 4 custom rows, "page-one" has 5',
         );
     });
 
@@ -185,6 +190,64 @@ describe('Menu constructor', () => {
 
         expect(
             () => new Menu(makeOptions({ pages: [validPage] })),
+        ).not.toThrow();
+    });
+
+    it('reserves two rows for prev-select-next navigation', () => {
+        const validPage: MenuPage = {
+            ...pageOne,
+            components: Array.from({ length: 3 }, makeComponentRow),
+        };
+        const invalidPage: MenuPage = {
+            ...pageOne,
+            components: Array.from({ length: 4 }, makeComponentRow),
+        };
+
+        expect(
+            () =>
+                new Menu(
+                    makeOptions({
+                        pages: [validPage],
+                        navigation: 'prev-select-next',
+                    }),
+                ),
+        ).not.toThrow();
+
+        expect(
+            () =>
+                new Menu(
+                    makeOptions({
+                        pages: [invalidPage],
+                        navigation: 'prev-select-next',
+                    }),
+                ),
+        ).toThrow('Pages can have at most 3 custom rows, "page-one" has 4');
+    });
+
+    it('reserves one row for select and wizard navigation', () => {
+        const validPage: MenuPage = {
+            ...pageOne,
+            components: Array.from({ length: 4 }, makeComponentRow),
+        };
+
+        expect(
+            () =>
+                new Menu(
+                    makeOptions({
+                        pages: [validPage],
+                        navigation: 'select',
+                    }),
+                ),
+        ).not.toThrow();
+
+        expect(
+            () =>
+                new Menu(
+                    makeOptions({
+                        pages: [validPage],
+                        navigation: 'wizard',
+                    }),
+                ),
         ).not.toThrow();
     });
 
@@ -1060,6 +1123,220 @@ describe('Menu public methods', () => {
 
                 expect(menu.currentPageIndex).toBe(2);
                 expect(messageMocks.edit).toHaveBeenCalledTimes(2);
+            });
+
+            it('returns through visited pages with back()', async () => {
+                menu = new Menu(
+                    makeOptions({ pages: [pageOne, pageTwo, pageThree] }),
+                );
+
+                await startMenu();
+                await menu.setPage(1);
+                await menu.setPage(2);
+
+                await menu.back();
+                expect(menu.currentPageIndex).toBe(1);
+
+                await menu.back();
+                expect(menu.currentPageIndex).toBe(0);
+
+                await menu.back();
+                expect(menu.currentPageIndex).toBe(0);
+                expect(messageMocks.edit).toHaveBeenCalledTimes(4);
+            });
+
+            it('renders only a page select for select navigation', async () => {
+                menu = new Menu(makeOptions({ navigation: 'select' }));
+
+                const channel = makeChannel(message);
+
+                await menu.send(channel);
+
+                const payload = channel.send.mock.calls[0][0];
+
+                expect(payload.components).toHaveLength(1);
+
+                const row = payload.components[0]!;
+
+                expect(row.components).toHaveLength(1);
+
+                const select = row.components[0] as StringSelectMenuBuilder;
+                const options = select.toJSON().options;
+
+                expect(select.data.custom_id).toBe('menu:navigationselect');
+                expect(options.map((option) => option.label)).toEqual([
+                    'page-one',
+                    'page-two',
+                ]);
+                expect(options[0]?.default).toBe(true);
+                expect(options[1]?.default).toBe(false);
+            });
+
+            it('renders a select and previous/next buttons for prev-select-next navigation', async () => {
+                menu = new Menu(
+                    makeOptions({ navigation: 'prev-select-next' }),
+                );
+
+                const channel = makeChannel(message);
+
+                await menu.send(channel);
+
+                const payload = channel.send.mock.calls[0][0];
+
+                expect(payload.components).toHaveLength(2);
+
+                const selectRow = payload.components[0]!;
+                const buttonRow = payload.components[1]!;
+
+                expect(selectRow.components[0]!.data.custom_id).toBe(
+                    'menu:navigationselect',
+                );
+                expect(
+                    buttonRow.components.map(
+                        (component) => component.data.custom_id,
+                    ),
+                ).toEqual(['menu:navigationprevious', 'menu:navigationnext']);
+            });
+
+            it('renders a disabled Back button for wizard navigation', async () => {
+                menu = new Menu(
+                    makeOptions({
+                        navigation: 'wizard',
+                        pages: [pageOne, pageTwo],
+                    }),
+                );
+
+                const channel = makeChannel(message);
+
+                await menu.send(channel);
+
+                const payload = channel.send.mock.calls[0][0];
+
+                expect(payload.components).toHaveLength(1);
+
+                const back = payload.components[0]!.components[0]!;
+
+                expect(back.data.custom_id).toBe('menu:navigationback');
+                expect(back.data.disabled).toBe(true);
+            });
+
+            it('navigates back through wizard history with the Back button', async () => {
+                menu = new Menu(
+                    makeOptions({
+                        navigation: 'wizard',
+                        pages: [pageOne, pageTwo, pageThree],
+                    }),
+                );
+
+                await startMenu();
+                await menu.setPage(1);
+                await menu.setPage(2);
+
+                const back = makeComponentInteraction({
+                    customId: 'menu:navigationback',
+                    isButton: true,
+                });
+
+                await dispatch(back);
+
+                expect(back.deferUpdate).toHaveBeenCalledOnce();
+                expect(menu.currentPageIndex).toBe(1);
+
+                const secondBack = makeComponentInteraction({
+                    customId: 'menu:navigationback',
+                    isButton: true,
+                });
+
+                await dispatch(secondBack);
+
+                expect(menu.currentPageIndex).toBe(0);
+            });
+
+            it('enables the Back button once a page has been visited', async () => {
+                menu = new Menu(
+                    makeOptions({
+                        navigation: 'wizard',
+                        pages: [pageOne, pageTwo],
+                    }),
+                );
+
+                await startMenu();
+                await menu.setPage(1);
+
+                const payload = messageMocks.edit.mock.calls[0][0]!;
+                const back = payload.components[0]!.components[0]!;
+
+                expect(back.data.disabled).toBe(false);
+            });
+
+            it('jumps to a page selected from the page select menu', async () => {
+                menu = new Menu(
+                    makeOptions({
+                        navigation: 'select',
+                        pages: [pageOne, pageTwo, pageThree],
+                    }),
+                );
+
+                await startMenu();
+
+                const interaction = makeComponentInteraction({
+                    customId: 'menu:navigationselect',
+                    isStringSelectMenu: true,
+                    values: ['2'],
+                });
+
+                await dispatch(interaction);
+
+                expect(interaction.deferUpdate).toHaveBeenCalledOnce();
+                expect(menu.currentPageIndex).toBe(2);
+            });
+
+            it.each(['9', '-1', '1.5', 'not-a-number'])(
+                'ignores invalid page select value %s',
+                async (value) => {
+                    menu = new Menu(
+                        makeOptions({
+                            navigation: 'select',
+                            pages: [pageOne, pageTwo],
+                        }),
+                    );
+
+                    await startMenu();
+
+                    const interaction = makeComponentInteraction({
+                        customId: 'menu:navigationselect',
+                        isStringSelectMenu: true,
+                        values: [value],
+                    });
+
+                    await dispatch(interaction);
+
+                    expect(interaction.deferUpdate).toHaveBeenCalledOnce();
+                    expect(menu.currentPageIndex).toBe(0);
+                },
+            );
+
+            it('records page select jumps in history', async () => {
+                menu = new Menu(
+                    makeOptions({
+                        navigation: 'prev-select-next',
+                        pages: [pageOne, pageTwo, pageThree],
+                    }),
+                );
+
+                await startMenu();
+
+                const interaction = makeComponentInteraction({
+                    customId: 'menu:navigationselect',
+                    isStringSelectMenu: true,
+                    values: ['2'],
+                });
+
+                await dispatch(interaction);
+
+                await menu.back();
+
+                expect(menu.currentPageIndex).toBe(0);
             });
         });
 
