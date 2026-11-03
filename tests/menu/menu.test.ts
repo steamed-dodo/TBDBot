@@ -8,6 +8,7 @@ import {
     EmbedBuilder,
     Message,
     MessageActionRowComponentBuilder,
+    MessageComponentInteraction,
     MessageFlags,
     RepliableInteraction,
     TextBasedChannel,
@@ -25,6 +26,13 @@ const pageTwo: MenuPage = {
     name: 'page-two',
     embed: new EmbedBuilder()
         .setTitle('page two')
+        .setDescription('description'),
+};
+
+const pageThree: MenuPage = {
+    name: 'page-three',
+    embed: new EmbedBuilder()
+        .setTitle('page three')
         .setDescription('description'),
 };
 
@@ -48,11 +56,13 @@ function makeMessage() {
 
     const message = {
         id: 'message-123',
-        edit: vi.fn().mockResolvedValue(undefined),
+        edit: vi.fn(),
         delete: vi.fn().mockResolvedValue(undefined),
         createMessageComponentCollector: vi.fn(() => collector),
         components: [],
     };
+
+    message.edit.mockImplementation(async () => message);
 
     return {
         message: message as unknown as Message,
@@ -100,13 +110,46 @@ function makeChannel(message: Message, sendable = true) {
     };
 }
 
-function makeComponentRow(): ActionRowBuilder<MessageActionRowComponentBuilder> {
+function makeComponentRow(
+    customId = 'test-button',
+): ActionRowBuilder<MessageActionRowComponentBuilder> {
     return new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
         new ButtonBuilder()
-            .setCustomId('test-button')
+            .setCustomId(customId)
             .setLabel('Test button')
             .setStyle(ButtonStyle.Primary),
     );
+}
+
+type ComponentInteractionMock = MessageComponentInteraction & {
+    reply: ReturnType<typeof vi.fn>;
+    deferUpdate: ReturnType<typeof vi.fn>;
+};
+
+function makeComponentInteraction(
+    overrides: {
+        customId?: string;
+        userId?: string;
+        isButton?: boolean;
+        replied?: boolean;
+        deferred?: boolean;
+    } = {},
+): ComponentInteractionMock {
+    return {
+        customId: overrides.customId ?? 'test-button',
+        user: { id: overrides.userId ?? 'user-123' },
+        replied: overrides.replied ?? false,
+        deferred: overrides.deferred ?? false,
+        isButton: () => overrides.isButton ?? false,
+        reply: vi.fn().mockResolvedValue(undefined),
+        deferUpdate: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ComponentInteractionMock;
+}
+
+async function settle(): Promise<void> {
+    for (let index = 0; index < 10; index += 1) {
+        await Promise.resolve();
+    }
 }
 
 describe('Menu constructor', () => {
@@ -320,6 +363,23 @@ describe('Menu public methods', () => {
 
             expect(payload.embeds).toEqual([pageOne.embed]);
             expect(payload.components).toHaveLength(1);
+        });
+
+        it('uses the webhook controller for a deferred response', async () => {
+            const interaction = makeInteraction(message, {
+                deferred: true,
+            });
+
+            await menu.reply(interaction, { ephemeral: false });
+            await menu.setPage(1);
+
+            expect(interaction.webhook.editMessage).toHaveBeenCalledWith(
+                '@original',
+                expect.objectContaining({
+                    embeds: [pageTwo.embed],
+                }),
+            );
+            expect(messageMocks.edit).not.toHaveBeenCalled();
         });
 
         it('rejects an interaction that has already been replied to', async () => {
@@ -689,6 +749,402 @@ describe('Menu public methods', () => {
 
             expect(menu.currentPageIndex).toBe(0);
             expect(messageMocks.edit).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    describe('interactions', () => {
+        async function startMenu(): Promise<void> {
+            await menu.send(makeChannel(message));
+        }
+
+        async function dispatch(
+            interaction: MessageComponentInteraction,
+        ): Promise<void> {
+            collector.emit('collect', interaction);
+            await settle();
+        }
+
+        describe('access control', () => {
+            it('rejects a user other than the caller by default', async () => {
+                await startMenu();
+
+                const interaction = makeComponentInteraction({
+                    customId: 'menu:navigationnext',
+                    userId: 'other-user',
+                    isButton: true,
+                });
+
+                await dispatch(interaction);
+
+                expect(interaction.reply).toHaveBeenCalledWith({
+                    content: 'You cannot control this menu.',
+                    flags: MessageFlags.Ephemeral,
+                });
+                expect(interaction.deferUpdate).not.toHaveBeenCalled();
+                expect(menu.currentPageIndex).toBe(0);
+            });
+
+            it('allows any user when access is everyone', async () => {
+                menu = new Menu(makeOptions({ access: { type: 'everyone' } }));
+
+                await startMenu();
+
+                const interaction = makeComponentInteraction({
+                    customId: 'menu:navigationnext',
+                    userId: 'other-user',
+                    isButton: true,
+                });
+
+                await dispatch(interaction);
+
+                expect(interaction.deferUpdate).toHaveBeenCalledOnce();
+                expect(menu.currentPageIndex).toBe(1);
+            });
+
+            it('uses a custom access filter', async () => {
+                const filter = vi.fn().mockResolvedValue(true);
+
+                menu = new Menu(
+                    makeOptions({ access: { type: 'custom', filter } }),
+                );
+
+                await startMenu();
+
+                const interaction = makeComponentInteraction({
+                    customId: 'menu:navigationnext',
+                    userId: 'allowed-user',
+                    isButton: true,
+                });
+
+                await dispatch(interaction);
+
+                expect(filter).toHaveBeenCalledWith(interaction);
+                expect(menu.currentPageIndex).toBe(1);
+            });
+
+            it('rejects a user when the custom access filter denies them', async () => {
+                menu = new Menu(
+                    makeOptions({
+                        access: {
+                            type: 'custom',
+                            filter: () => false,
+                        },
+                    }),
+                );
+
+                await startMenu();
+
+                const interaction = makeComponentInteraction({
+                    customId: 'menu:navigationnext',
+                    userId: 'other-user',
+                    isButton: true,
+                });
+
+                await dispatch(interaction);
+
+                expect(interaction.reply).toHaveBeenCalledWith({
+                    content: 'You cannot control this menu.',
+                    flags: MessageFlags.Ephemeral,
+                });
+                expect(menu.currentPageIndex).toBe(0);
+            });
+
+            it('falls back to the caller when the custom access filter fails', async () => {
+                const error = new Error('Filter failed');
+                const filter = vi.fn().mockRejectedValue(error);
+                const errorListener = vi.fn();
+
+                menu = new Menu(
+                    makeOptions({ access: { type: 'custom', filter } }),
+                );
+                menu.on('menuError', errorListener);
+
+                await startMenu();
+
+                const interaction = makeComponentInteraction({
+                    customId: 'menu:navigationnext',
+                    isButton: true,
+                });
+
+                await dispatch(interaction);
+
+                expect(errorListener).toHaveBeenCalledWith(error);
+                expect(menu.currentPageIndex).toBe(1);
+            });
+
+            it('rejects another user when the custom access filter fails', async () => {
+                menu = new Menu(
+                    makeOptions({
+                        access: {
+                            type: 'custom',
+                            filter: () => {
+                                throw new Error('Filter failed');
+                            },
+                        },
+                    }),
+                );
+
+                await startMenu();
+
+                const interaction = makeComponentInteraction({
+                    customId: 'menu:navigationnext',
+                    userId: 'other-user',
+                    isButton: true,
+                });
+
+                await dispatch(interaction);
+
+                expect(interaction.reply).toHaveBeenCalledWith({
+                    content: 'You cannot control this menu.',
+                    flags: MessageFlags.Ephemeral,
+                });
+                expect(menu.currentPageIndex).toBe(0);
+            });
+        });
+
+        describe('custom handlers', () => {
+            it('invokes the current page handler for custom components', async () => {
+                const handler = vi.fn().mockResolvedValue(undefined);
+
+                menu = new Menu(
+                    makeOptions({
+                        pages: [
+                            { ...pageOne, onInteraction: handler },
+                            pageTwo,
+                        ],
+                    }),
+                );
+
+                await startMenu();
+
+                const interaction = makeComponentInteraction();
+
+                await dispatch(interaction);
+
+                expect(handler).toHaveBeenCalledWith(interaction, menu);
+            });
+
+            it('replies when a custom component has no handler', async () => {
+                await startMenu();
+
+                const interaction = makeComponentInteraction();
+
+                await dispatch(interaction);
+
+                expect(interaction.reply).toHaveBeenCalledWith({
+                    content: 'This component has no action handler.',
+                    flags: MessageFlags.Ephemeral,
+                });
+            });
+
+            it('reports handler errors and replies with an error message', async () => {
+                const error = new Error('Handler failed');
+                const handler = vi.fn().mockRejectedValue(error);
+                const errorListener = vi.fn();
+
+                menu = new Menu(
+                    makeOptions({
+                        pages: [
+                            { ...pageOne, onInteraction: handler },
+                            pageTwo,
+                        ],
+                    }),
+                );
+                menu.on('menuError', errorListener);
+
+                await startMenu();
+
+                const interaction = makeComponentInteraction();
+
+                await dispatch(interaction);
+
+                expect(errorListener).toHaveBeenCalledWith(error);
+                expect(interaction.reply).toHaveBeenCalledWith({
+                    content:
+                        'An error occurred while handling this interaction.',
+                    flags: MessageFlags.Ephemeral,
+                });
+            });
+
+            it('does not reply after a handler fails on a handled interaction', async () => {
+                const error = new Error('Handler failed');
+                const handler = vi.fn().mockRejectedValue(error);
+                const errorListener = vi.fn();
+
+                menu = new Menu(
+                    makeOptions({
+                        pages: [
+                            { ...pageOne, onInteraction: handler },
+                            pageTwo,
+                        ],
+                    }),
+                );
+                menu.on('menuError', errorListener);
+
+                await startMenu();
+
+                const interaction = makeComponentInteraction({ replied: true });
+
+                await dispatch(interaction);
+
+                expect(errorListener).toHaveBeenCalledWith(error);
+                expect(interaction.reply).not.toHaveBeenCalled();
+            });
+
+            it('rejects interactions after the menu has stopped', async () => {
+                await startMenu();
+                await menu.stop();
+
+                const interaction = makeComponentInteraction();
+
+                await dispatch(interaction);
+
+                expect(interaction.reply).toHaveBeenCalledWith({
+                    content: 'This menu has ended.',
+                    flags: MessageFlags.Ephemeral,
+                });
+            });
+        });
+
+        describe('navigation', () => {
+            it('moves between pages and stops at the boundaries', async () => {
+                await startMenu();
+
+                const previous = makeComponentInteraction({
+                    customId: 'menu:navigationprevious',
+                    isButton: true,
+                });
+                const next = makeComponentInteraction({
+                    customId: 'menu:navigationnext',
+                    isButton: true,
+                });
+
+                await dispatch(previous);
+
+                expect(previous.deferUpdate).toHaveBeenCalledOnce();
+                expect(menu.currentPageIndex).toBe(0);
+
+                await dispatch(next);
+
+                expect(next.deferUpdate).toHaveBeenCalledOnce();
+                expect(menu.currentPageIndex).toBe(1);
+
+                await dispatch(next);
+
+                expect(menu.currentPageIndex).toBe(1);
+
+                await dispatch(previous);
+
+                expect(menu.currentPageIndex).toBe(0);
+            });
+
+            it('applies queued relative steps in order', async () => {
+                menu = new Menu(
+                    makeOptions({ pages: [pageOne, pageTwo, pageThree] }),
+                );
+
+                await startMenu();
+
+                const firstNext = makeComponentInteraction({
+                    customId: 'menu:navigationnext',
+                    isButton: true,
+                });
+                const secondNext = makeComponentInteraction({
+                    customId: 'menu:navigationnext',
+                    isButton: true,
+                });
+
+                collector.emit('collect', firstNext);
+                collector.emit('collect', secondNext);
+                await settle();
+
+                expect(menu.currentPageIndex).toBe(2);
+                expect(messageMocks.edit).toHaveBeenCalledTimes(2);
+            });
+        });
+
+        describe('component updates', () => {
+            it('disables the custom rows of the current page when stopping', async () => {
+                const firstRow = makeComponentRow('first-button');
+                const secondRow = makeComponentRow('second-button');
+
+                menu = new Menu(
+                    makeOptions({
+                        pages: [
+                            { ...pageOne, components: [firstRow] },
+                            { ...pageTwo, components: [secondRow] },
+                        ],
+                    }),
+                );
+
+                await startMenu();
+                await menu.setPage(1);
+
+                messageMocks.edit.mockClear();
+
+                await menu.stop();
+
+                const payload = messageMocks.edit.mock.calls[0][0]!;
+                const customRow = payload.components[0]!;
+                const navigationRow = payload.components.at(-1)!;
+
+                expect(customRow.components[0]!.data.custom_id).toBe(
+                    'second-button',
+                );
+                expect(customRow.components[0]!.data.disabled).toBe(true);
+                expect(
+                    navigationRow.components.every(
+                        (component) => component.data.disabled,
+                    ),
+                ).toBe(true);
+            });
+        });
+    });
+
+    describe('collector lifecycle', () => {
+        it('disables components when the collector times out', async () => {
+            await menu.send(makeChannel(message));
+
+            collector.emit('end', new Map(), 'time');
+            await settle();
+
+            expect(messageMocks.edit).toHaveBeenCalledOnce();
+            expect(messageMocks.delete).not.toHaveBeenCalled();
+            expect(menu.menuMessage).toBe(message);
+        });
+
+        it('deletes the message on timeout when deleteOnTimeout is true', async () => {
+            const deleteListener = vi.fn();
+
+            menu = new Menu(makeOptions({ deleteOnTimeout: true }));
+            menu.on('delete', deleteListener);
+
+            await menu.send(makeChannel(message));
+
+            collector.emit('end', new Map(), 'time');
+            await settle();
+
+            expect(messageMocks.delete).toHaveBeenCalledOnce();
+            expect(deleteListener).toHaveBeenCalledOnce();
+            expect(menu.menuMessage).toBeNull();
+        });
+
+        it.each([
+            'messageDelete',
+            'channelDelete',
+            'threadDelete',
+            'guildDelete',
+        ])('clears the message after a %s event', async (reason) => {
+            await menu.send(makeChannel(message));
+
+            collector.emit('end', new Map(), reason);
+            await settle();
+
+            expect(menu.menuMessage).toBeNull();
+
+            await expect(menu.setPage(1)).rejects.toThrow(
+                'Start the menu before changing pages.',
+            );
         });
     });
 
