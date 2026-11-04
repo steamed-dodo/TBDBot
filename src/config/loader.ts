@@ -173,7 +173,7 @@ function resolveField(
 
     for (const source of loaded) {
         for (const candidate of candidates) {
-            if (!(candidate in source.values)) {
+            if (!Object.hasOwn(source.values, candidate)) {
                 continue;
             }
 

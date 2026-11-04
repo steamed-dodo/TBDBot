@@ -61,6 +61,30 @@ describe('permissions bitfield', () => {
         expect(field.equals(8n)).toBe(true);
         expect(field.equals(16n)).toBe(false);
     });
+
+    describe('defects found in the second pass', () => {
+        it('does not resolve Object.prototype members as permissions', () => {
+            for (const name of [
+                'constructor',
+                'toString',
+                'valueOf',
+                'hasOwnProperty',
+            ]) {
+                expect(typeof PermissionsBitField.resolve(name)).toBe('bigint');
+            }
+        });
+
+        it('still parses a numeric string', () => {
+            expect(PermissionsBitField.resolve('8')).toBe(8n);
+        });
+
+        it('does not throw when checking a prototype member', () => {
+            const field = new PermissionsBitField('constructor');
+
+            expect(field.bitfield).toBe(0n);
+            expect(field.has('SendMessages')).toBe(false);
+        });
+    });
 });
 
 describe('permission resolution', () => {
