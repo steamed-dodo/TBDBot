@@ -23,7 +23,13 @@ The package is published under `@my-lib/utils` for now and becomes
 ## At a glance
 
 ```ts
-import { FrameworkClient, Menu, WidgetRouter, button } from '@my-lib/utils';
+import {
+    FrameworkClient,
+    Menu,
+    WidgetRouter,
+    Wizard,
+    button,
+} from '@my-lib/utils';
 
 const client = new FrameworkClient({ token: process.env.BOT_TOKEN! });
 const router = new WidgetRouter(client.api);
@@ -34,7 +40,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-const menu = new Menu({
+const wizard = new Wizard({
     api: client.api,
     userId: interaction.userId,
     steps: [
@@ -50,16 +56,15 @@ const menu = new Menu({
         {
             id: 'done',
             render: ({ answers }) => ({
-                components: [
-                    [button('restart', 'Start over', { style: 2 })],
-                ],
+                components: [[button('restart', 'Start over', { style: 2 })]],
                 content: `You picked ${answers['language']}`,
             }),
         },
     ],
+    onComplete: ({ answers }) => console.log(answers),
 });
 
-await menu.reply(interaction, { ephemeral: true }, router);
+await wizard.reply(interaction, { ephemeral: true }, router);
 ```
 
 ## Modules
@@ -115,12 +120,27 @@ The UI layer is a widget engine: a widget is a unit of state plus the way it
 is displayed, and the router resolves an incoming `custom_id` to a widget and
 an action.
 
-- **`Menu`** — one class covers both linear menus and branching wizards.
+A widget does **not** own its state. The framework holds the one true value
+and hands it back to `render(state)` on every repaint, so replacing the state
+is always safe:
+
+```ts
+await router.update(routingId, nextState);
+```
+
+- **`Menu`** — a linear, paginated menu with previous/next chrome.
+- **`Wizard`** — a branching, choice-driven flow that captures answers and
+  can go back.
 - **`Panel`** — a persistent widget, restored at boot from a store.
 - **`Modal`** — a widget with a different render target, routed by its
   `custom_id`.
 - **`WidgetRouter`** — resolves custom ids, dispatches actions, and queues
   interactions that arrive before a persistent widget has been restored.
+
+`Menu` and `Wizard` are separate classes over a shared `Flow` base rather
+than one class with a mode flag: what makes a menu a menu and a wizard a
+wizard is how their steps are traversed, and that is a difference in the
+state transitions.
 
 Custom ids are framework-owned strings in the shape
 `<namespace>:<widgetId>:<action>`. Use the `button()` and `select()` helpers

@@ -9,6 +9,7 @@ import {
     createModalSubmitInteraction,
 } from '../../src/testing/factories';
 import { Modal } from '../../src/ui/modal/Modal';
+import type { ModalState } from '../../src/ui/modal/Modal';
 import { WidgetRouter } from '../../src/ui/router';
 
 function createApi(transport: MockTransport): API {
@@ -96,7 +97,9 @@ describe('modal', () => {
             ),
         );
 
-        expect(modal.submittedValues).toEqual({ message: 'hello there' });
-        expect(modal.state.submitted).toBe(true);
+        const state = router.stateOf<ModalState>('modal123');
+
+        expect(state?.values).toEqual({ message: 'hello there' });
+        expect(state?.submitted).toBe(true);
     });
 });

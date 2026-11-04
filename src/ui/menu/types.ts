@@ -1,14 +1,15 @@
 import type { EmbedBuilder } from '@discordjs/builders';
 import type { API } from '@discordjs/core';
+
 import type { Interaction } from '../../interaction/types';
 import type { ComponentButtonStyle, ComponentRow, EmojiSpec } from '../types';
-import type { Menu } from './Menu';
+import type { Flow } from './Flow';
 
 /**
  * A choice offered by a step.
  *
- * Selecting a choice stores its value under the step's ID (in wizard mode)
- * and navigates to the choice's `next` step.
+ * Selecting a choice stores its value under the step's ID (in a wizard) and
+ * navigates to the choice's `next` step.
  */
 export interface Choice {
     /** Value stored when the choice is selected. */
@@ -33,7 +34,7 @@ export interface Choice {
      * Step ID to navigate to after selecting this choice.
      *
      * When omitted, the step's own `next` value is used. When both are
-     * omitted, or `next` is `null`, selecting the choice completes the flow.
+     * omitted, or `next` is `null`, a wizard completes the flow.
      */
     readonly next?: string | null;
 }
@@ -55,12 +56,15 @@ export interface StepContent {
 /**
  * Context passed to step render functions and action handlers.
  */
-export interface StepContext {
-    /** The menu handling the interaction. */
-    readonly menu: Menu;
+export interface StepContext<S extends FlowState = FlowState> {
+    /** The flow handling the interaction. */
+    readonly flow: Flow<S>;
 
     /** ID of the step being rendered. */
     readonly stepId: string;
+
+    /** The state the flow currently holds. */
+    readonly state: S;
 
     /** Read-only snapshot of the answers collected so far. */
     readonly answers: Readonly<Record<string, string>>;
@@ -73,7 +77,7 @@ export interface StepContext {
  * Definition of a single step.
  *
  * The `Step` type is the same for menus and wizards; the two differ only in
- * which optional members are populated.
+ * which optional members are populated and in how the steps are traversed.
  */
 export interface Step {
     /** Unique identifier used for navigation and answers. */
@@ -82,8 +86,8 @@ export interface Step {
     /**
      * Step to navigate to once this step is completed.
      *
-     * `null` completes the flow. When omitted, a menu advances to the next
-     * step in the list, while a wizard completes the flow.
+     * `null` completes a wizard. When omitted, a wizard completes the flow
+     * and a menu advances to the next step in the list.
      */
     readonly next?: string | null;
 
@@ -103,45 +107,12 @@ export interface Step {
 }
 
 /**
- * How a menu behaves.
+ * The state of a flow.
  *
- * - `menu`: linear steps with previous/next chrome.
- * - `wizard`: branching steps with answer capture and a back button.
+ * The framework holds this value and hands it back to the widget on every
+ * render, so there is exactly one copy of it.
  */
-export type MenuMode = 'menu' | 'wizard';
-
-/**
- * Navigation styles supported by a menu.
- *
- * - `prev-next`: Previous and Next buttons.
- * - `prev-select-next`: A step select menu with Previous and Next buttons.
- * - `select`: A step select menu only.
- * - `wizard`: A Back button only; steps provide their own choices.
- */
-export type MenuNavigation =
-    'prev-next' | 'prev-select-next' | 'select' | 'wizard';
-
-/**
- * Controls which users may interact with a menu.
- *
- * - `caller-only`: Only the user who owns the menu may interact.
- * - `everyone`: Any user may interact.
- * - `custom`: Access is determined by a user-provided filter.
- */
-export type MenuAccess =
-    | { readonly type: 'caller-only' }
-    | { readonly type: 'everyone' }
-    | {
-          readonly type: 'custom';
-          readonly filter: (
-              interaction: Interaction,
-          ) => boolean | Promise<boolean>;
-      };
-
-/**
- * The state of a menu.
- */
-export interface MenuState {
+export interface FlowState {
     /** ID of the step currently displayed. */
     readonly currentStepId: string;
 
@@ -156,32 +127,40 @@ export interface MenuState {
 }
 
 /**
- * Called after the final step has been completed.
+ * Controls which users may interact with a flow.
+ *
+ * - `caller-only`: Only the user who owns the flow may interact.
+ * - `everyone`: Any user may interact.
+ * - `custom`: Access is determined by a user-provided filter.
  */
-export type MenuCompleteHandler = (
-    context: StepContext,
-) => void | Promise<void>;
+export type MenuAccess =
+    | { readonly type: 'caller-only' }
+    | { readonly type: 'everyone' }
+    | {
+          readonly type: 'custom';
+          readonly filter: (
+              interaction: Interaction,
+          ) => boolean | Promise<boolean>;
+      };
 
 /**
- * Configuration options used to construct a {@link Menu}.
+ * Configuration shared by every flow.
  */
-export interface MenuOptions {
-    /**
-     * The REST facade used to send and edit the menu's message.
-     */
+export interface FlowOptions {
+    /** The REST facade used to send and edit the flow's message. */
     readonly api: API;
 
     /** Optional name used for diagnostics. */
     readonly name?: string;
 
     /**
-     * Discord user ID allowed to operate the menu.
+     * Discord user ID allowed to operate the flow.
      *
      * Used by the `caller-only` access policy.
      */
     readonly userId?: string;
 
-    /** Steps available in the menu. */
+    /** Steps available in the flow. */
     readonly steps: readonly Step[];
 
     /**
@@ -192,68 +171,87 @@ export interface MenuOptions {
     readonly firstStep?: string;
 
     /**
-     * Whether the menu behaves like a linear menu or a branching wizard.
-     *
-     * @defaultValue 'menu'
-     */
-    readonly mode?: MenuMode;
-
-    /**
-     * Navigation chrome rendered alongside the active step.
-     *
-     * @defaultValue 'prev-next' for menus and 'wizard' for wizards.
-     */
-    readonly navigation?: MenuNavigation;
-
-    /**
-     * Policy controlling which users may interact with the menu.
+     * Policy controlling which users may interact with the flow.
      *
      * @defaultValue { type: 'caller-only' }
      */
     readonly access?: MenuAccess;
 
     /**
-     * Maximum duration of the menu, in milliseconds.
+     * Maximum duration of the flow, in milliseconds.
      *
      * @defaultValue 180000
      */
     readonly timeout?: number;
 
     /**
-     * Whether to delete the menu message when the timeout elapses.
+     * Whether to delete the flow's message when the timeout elapses.
      *
      * @defaultValue false
      */
     readonly deleteOnTimeout?: boolean;
 
-    /** Called when the flow completes. */
-    readonly onComplete?: MenuCompleteHandler;
-
     /**
-     * Routing id used for the menu's custom ids.
+     * Routing id used for the flow's custom ids.
      *
      * Generated automatically when omitted.
      */
     readonly routingId?: string;
 
     /**
-     * Public identity of the menu.
+     * Public identity of the flow.
      *
      * Defaults to the routing id.
      */
     readonly id?: string;
 
     /**
-     * Namespace used for the menu's custom ids.
+     * Namespace used for the flow's custom ids.
      *
      * @defaultValue 'ui'
      */
     readonly namespace?: string;
 
     /**
-     * The type used to look up the factory that recreates the menu.
+     * The type used to look up the factory that recreates the flow.
      *
      * @defaultValue 'menu'
      */
     readonly type?: string;
+}
+
+/**
+ * Called after a wizard has been completed.
+ */
+export type WizardCompleteHandler = (
+    context: StepContext,
+) => void | Promise<void>;
+
+/**
+ * Navigation chrome rendered by a menu.
+ *
+ * - `prev-next`: Previous and Next buttons.
+ * - `prev-select-next`: A step select menu with Previous and Next buttons.
+ * - `select`: A step select menu only.
+ */
+export type MenuNavigation = 'prev-next' | 'prev-select-next' | 'select';
+
+/**
+ * Configuration options used to construct a {@link Menu}.
+ */
+export interface MenuOptions extends FlowOptions {
+    /**
+     * Navigation chrome rendered alongside the active step.
+     *
+     * @defaultValue 'prev-next'
+     */
+    readonly navigation?: MenuNavigation;
+}
+
+/**
+ * Configuration options used to construct a {@link Wizard}.
+ */
+export interface WizardOptions extends FlowOptions {
+    /** Called when the wizard completes. */
+    readonly onComplete?: WizardCompleteHandler;
 }

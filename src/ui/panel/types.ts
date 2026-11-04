@@ -5,11 +5,15 @@ import type { Panel } from './Panel';
 /**
  * A widget that can be persisted and restored.
  *
- * The panel manager works with this interface rather than with {@link Panel}
- * specifically, so any widget — a persistent menu, for example — can survive
+ * The panel manager works with this interface rather than with a concrete
+ * panel class, so any widget — a persistent menu, for example — can survive
  * a restart.
+ *
+ * The widget holds only identifiers: it never holds a message object, because
+ * the message may be edited or deleted by another client and the framework
+ * deliberately keeps no cache.
  */
-export interface PersistentWidget extends Widget {
+export interface PersistentWidget<S = unknown> extends Widget<S> {
     /** Stable, user-facing identity of the widget. */
     readonly id: string;
 
@@ -28,8 +32,20 @@ export interface PersistentWidget extends Widget {
     /** ID of the guild containing the widget's message, when attached. */
     guildId: string | null;
 
-    /** The state that should be persisted. */
-    serialize(): unknown;
+    /**
+     * Returns the snapshot that should be persisted.
+     *
+     * @param state - The state the widget currently holds.
+     */
+    serialize(state: S): unknown;
+
+    /**
+     * Rebuilds the state from a snapshot.
+     *
+     * @param data - The persisted snapshot.
+     * @returns The restored state.
+     */
+    restore(data: unknown): S;
 
     /** Called when the widget is registered with a manager. */
     onCreate?(): Promise<void>;
@@ -40,6 +56,21 @@ export interface PersistentWidget extends Widget {
     /** Called when the widget is unregistered or deleted. */
     onDestroy?(): Promise<void>;
 }
+
+/**
+ * Controls which users may interact with a panel.
+ *
+ * - `everyone`: Any user may interact with the panel.
+ * - `custom`: Access is determined by a user-provided filter.
+ */
+export type PanelAccess =
+    | { readonly type: 'everyone' }
+    | {
+          readonly type: 'custom';
+          readonly filter: (
+              interaction: Interaction,
+          ) => boolean | Promise<boolean>;
+      };
 
 /**
  * Serializable representation of a panel and its Discord message.
@@ -72,7 +103,7 @@ export interface StoredPanel<TData = unknown> {
     /** Discord message backing the panel. */
     readonly messageId: string;
 
-    /** Panel-specific state returned by {@link Panel.serialize}. */
+    /** Panel-specific state returned by {@link PersistentWidget.serialize}. */
     readonly data?: TData;
 }
 
@@ -106,17 +137,3 @@ export type PanelFactory = (record: StoredPanel) => Panel | Promise<Panel>;
 export type WidgetFactory = (
     record: StoredPanel,
 ) => PersistentWidget | Promise<PersistentWidget>;
-/**
- * Controls which users may interact with a panel.
- *
- * - `everyone`: Any user may interact with the panel.
- * - `custom`: Access is determined by a user-provided filter.
- */
-export type PanelAccess =
-    | { readonly type: 'everyone' }
-    | {
-          readonly type: 'custom';
-          readonly filter: (
-              interaction: Interaction,
-          ) => boolean | Promise<boolean>;
-      };

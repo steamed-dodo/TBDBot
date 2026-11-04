@@ -245,6 +245,112 @@ describe('widget router', () => {
         });
     });
 
+    describe('state ownership', () => {
+        it('hands the state to the widget on every render', async () => {
+            const rendered: unknown[] = [];
+
+            await router.register(
+                {
+                    id: 'abc123',
+                    routingId: 'abc123',
+                    render: (state: string) => {
+                        rendered.push(state);
+
+                        return { content: state };
+                    },
+                },
+                {
+                    kind: 'channel',
+                    channelId: 'channel-1',
+                    messageId: 'message-1',
+                },
+                'first',
+            );
+
+            await router.refresh('abc123');
+            await router.update('abc123', 'second');
+            await router.refresh('abc123');
+
+            expect(rendered).toEqual(['first', 'second', 'second']);
+        });
+
+        it('replaces the state rather than merging into it', async () => {
+            await router.register(
+                {
+                    id: 'abc123',
+                    routingId: 'abc123',
+                    render: (state: { count: number }) => ({
+                        content: String(state.count),
+                    }),
+                },
+                null,
+                { count: 1 },
+            );
+
+            await router.update('abc123', { count: 5 });
+
+            expect(router.stateOf('abc123')).toEqual({ count: 5 });
+        });
+
+        it('exposes the state of a widget', async () => {
+            const widget = createWidget('abc123');
+
+            await router.register(widget, null, { step: 'one' });
+
+            expect(router.stateOf('abc123')).toEqual({ step: 'one' });
+            expect(router.stateOf('missing')).toBeUndefined();
+        });
+
+        it('refuses to update an unknown widget', async () => {
+            await expect(router.update('missing', 'state')).rejects.toThrow(
+                Error,
+            );
+        });
+
+        it('passes the state to the action context', async () => {
+            const widget = createWidget('abc123');
+            let received: unknown;
+
+            await router.register(
+                {
+                    ...widget,
+                    onAction(_action, context) {
+                        received = context.state;
+                    },
+                },
+                null,
+                { step: 'one' },
+            );
+
+            await router.handle(
+                asInteraction(createComponentInteraction('ui:abc123:confirm')),
+            );
+
+            expect(received).toEqual({ step: 'one' });
+        });
+
+        it('replaces the state through the action context', async () => {
+            const widget = createWidget('abc123');
+
+            await router.register(
+                {
+                    ...widget,
+                    onAction: async (_action, context) => {
+                        await context.update({ step: 'two' });
+                    },
+                },
+                null,
+                { step: 'one' },
+            );
+
+            await router.handle(
+                asInteraction(createComponentInteraction('ui:abc123:confirm')),
+            );
+
+            expect(router.stateOf('abc123')).toEqual({ step: 'two' });
+        });
+    });
+
     describe('refresh', () => {
         it('re-renders a widget and edits its message', async () => {
             const widget = createWidget('abc123');

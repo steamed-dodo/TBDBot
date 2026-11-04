@@ -1,21 +1,21 @@
-import type { PanelAccess } from './types';
-import type { RenderedContent, Widget } from '../types';
+import type { RenderedContent } from '../types';
+import type { PanelAccess, PersistentWidget } from './types';
 
 /**
  * Base class for a persistent Discord message controlled by custom
  * components.
  *
  * A panel is a widget with a long lifetime: it has no timeout and is not
- * tied to a collector. A {@link PanelManager} routes interactions by
- * routing id, which allows panels to keep working after the bot restarts.
+ * tied to a collector. A {@link PanelManager} routes interactions by routing
+ * id, which allows panels to keep working after the bot restarts.
  *
- * Panel state that must survive a restart should be returned from
- * {@link Panel.serialize}. The panel manager stores that value and passes it
- * back to the registered factory when restoring the panel.
+ * The panel holds only identifiers — never a message object — because the
+ * message may be edited or deleted by another client and the framework
+ * deliberately keeps no cache.
  *
- * @typeParam TData - Serializable panel state persisted by the manager.
+ * @typeParam S - The state of the panel, held by the framework.
  */
-export abstract class Panel<TData = unknown> implements Widget<unknown> {
+export abstract class Panel<S = undefined> implements PersistentWidget<S> {
     /** Panel type used to look up a restoration factory. */
     public abstract readonly type: string;
 
@@ -54,37 +54,47 @@ export abstract class Panel<TData = unknown> implements Widget<unknown> {
         this.routingId = routingId;
     }
 
-    /** The panel holds no structured state by default. */
-    public get state(): unknown {
-        return undefined;
-    }
-
     /**
      * Builds the content displayed by the panel.
      *
      * Called when the panel is sent and whenever the panel manager refreshes
      * it.
+     *
+     * @param state - The state the panel currently holds.
      */
-    public abstract build(): RenderedContent | Promise<RenderedContent>;
+    public abstract build(state: S): RenderedContent | Promise<RenderedContent>;
 
     /**
      * Renders the panel.
      *
+     * @param state - The state the panel currently holds.
      * @returns The content displayed by the panel.
      */
-    public async render(): Promise<RenderedContent> {
-        return this.build();
+    public async render(state: S): Promise<RenderedContent> {
+        return this.build(state);
     }
 
     /**
-     * Returns the panel state that should be persisted.
+     * Returns the snapshot that should be persisted.
      *
      * Returning `undefined` means the panel has no extra state to store.
      * The value must be JSON-serializable when used with
      * {@link JsonFilePanelStore}.
+     *
+     * @param state - The state the panel currently holds.
      */
-    public serialize(): TData | undefined {
+    public serialize(_state: S): unknown {
         return undefined;
+    }
+
+    /**
+     * Rebuilds the state from a snapshot.
+     *
+     * @param _data - The persisted snapshot.
+     * @returns The restored state.
+     */
+    public restore(_data: unknown): S {
+        return undefined as S;
     }
 
     /** Called when the panel is registered with a manager. */

@@ -161,10 +161,6 @@ export class Modal implements Widget<ModalState> {
     /** Namespace used for the modal's custom id. */
     public readonly namespace: string;
 
-    private values: Record<string, string> = {};
-
-    private submitted = false;
-
     /**
      * @param options - Modal configuration.
      */
@@ -184,25 +180,22 @@ export class Modal implements Widget<ModalState> {
             createCustomId(this.namespace, this.routingId, 'submit');
     }
 
-    /** Current state of the modal. */
-    public get state(): ModalState {
-        return {
-            values: { ...this.values },
-            submitted: this.submitted,
-        };
-    }
-
-    /** Values submitted by the user. */
-    public get submittedValues(): Readonly<Record<string, string>> {
-        return { ...this.values };
+    /**
+     * The state the modal starts in.
+     *
+     * @returns The initial state.
+     */
+    public initialState(): ModalState {
+        return { values: {}, submitted: false };
     }
 
     /**
      * Modals have no message of their own.
      *
+     * @param _state - The state the modal currently holds.
      * @returns An empty content object.
      */
-    public render(): RenderedContent {
+    public render(_state: ModalState): RenderedContent {
         return {};
     }
 
@@ -214,14 +207,16 @@ export class Modal implements Widget<ModalState> {
      */
     public async onAction(
         action: string,
-        context: ActionContext,
+        context: ActionContext<ModalState>,
     ): Promise<void> {
         if (action !== 'submit') {
             return;
         }
 
-        this.values = extractModalValues(context.interaction);
-        this.submitted = true;
+        await context.update({
+            values: extractModalValues(context.interaction),
+            submitted: true,
+        });
     }
 
     /**
@@ -262,7 +257,7 @@ export class Modal implements Widget<ModalState> {
             components: data.components,
         });
 
-        await router?.register(this);
+        await router?.register(this, null, this.initialState());
     }
 }
 
