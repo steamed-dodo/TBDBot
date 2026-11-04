@@ -27,8 +27,8 @@ export interface FrameworkGateway extends Gateway {
     destroy?(): PromiseLike<void> | void;
 }
 
-/** Configuration options used to construct a {@link FrameworkClient}. */
-export interface FrameworkClientOptions {
+/** Configuration options used to construct a {@link Client}. */
+export interface ClientOptions {
     /** Bot token used to authenticate against Discord. */
     readonly token: string;
 
@@ -95,7 +95,7 @@ export type ShutdownTask = () => void | Promise<void>;
  * It owns the `REST` instance, the gateway, and `@discordjs/core`'s client,
  * and it translates raw gateway dispatches into friendly typed events.
  */
-export class FrameworkClient extends TypedEventEmitter {
+export class Client extends TypedEventEmitter {
     /** Underlying REST client. */
     public readonly rest: REST;
 
@@ -133,7 +133,7 @@ export class FrameworkClient extends TypedEventEmitter {
     /**
      * @param options - Client configuration.
      */
-    constructor(private readonly options: FrameworkClientOptions) {
+    constructor(private readonly options: ClientOptions) {
         super();
 
         this.setMaxListeners(0);

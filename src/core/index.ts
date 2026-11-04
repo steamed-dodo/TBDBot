@@ -3,9 +3,9 @@ export {
     EventRouter,
     TIER_ONE_EVENTS,
 } from './EventRouter';
-export { FrameworkClient } from './Client';
+export { Client } from './Client';
 export type {
-    FrameworkClientOptions,
+    ClientOptions,
     FrameworkGateway,
     InteractionHandler,
     ShutdownTask,

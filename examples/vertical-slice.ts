@@ -19,8 +19,8 @@ import { SlashCommandBuilder } from '@discordjs/builders';
 import { GatewayIntentBits } from 'discord-api-types/v10';
 
 import {
+    Client,
     CommandManager,
-    FrameworkClient,
     WidgetRouter,
     button,
     generateRoutingId,
@@ -35,7 +35,7 @@ if (!token) {
     throw new Error('Set DISCORD_TOKEN to run the vertical slice.');
 }
 
-const client = new FrameworkClient({
+const client = new Client({
     token,
     intents: GatewayIntentBits.Guilds,
 });

@@ -1,4 +1,4 @@
-import type { FrameworkClient } from '../core/Client';
+import type { Client } from '../core/Client';
 import type { FrameworkEventMap } from '../core/types';
 import type { Cache } from './Cache';
 
@@ -15,7 +15,7 @@ import type { Cache } from './Cache';
  * @returns A function that removes the listeners.
  */
 export function attachCacheInvalidation(
-    client: FrameworkClient,
+    client: Client,
     cache: Cache,
 ): () => void {
     const listeners: {

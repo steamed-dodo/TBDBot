@@ -1,5 +1,5 @@
-import { FrameworkClient } from '../core/Client';
-import type { FrameworkClientOptions } from '../core/Client';
+import { Client } from '../core/Client';
+import type { ClientOptions } from '../core/Client';
 import { createInteraction } from '../interaction/interaction';
 import type { Interaction } from '../interaction/types';
 import { MockGateway, MockTransport, createMockRest } from './mock';
@@ -9,7 +9,7 @@ import { MockGateway, MockTransport, createMockRest } from './mock';
  */
 export interface MockClient {
     /** The client. */
-    readonly client: FrameworkClient;
+    readonly client: Client;
 
     /** The transport recording the REST requests. */
     readonly transport: MockTransport;
@@ -43,13 +43,13 @@ export interface MockClient {
  * @returns The mock client.
  */
 export function createMockClient(
-    options: Partial<FrameworkClientOptions> = {},
+    options: Partial<ClientOptions> = {},
 ): MockClient {
     const transport = new MockTransport();
     const rest = createMockRest(transport);
     const gateway = new MockGateway();
 
-    const client = new FrameworkClient({
+    const client = new Client({
         token: 'test-token',
         rest,
         gateway,
