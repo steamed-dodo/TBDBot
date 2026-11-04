@@ -392,11 +392,9 @@ export class WidgetRouter {
 
             if (reserved) {
                 await registration.widget.onNavigation?.(name, context);
-
-                return;
+            } else {
+                await registration.widget.onAction?.(action, context);
             }
-
-            await registration.widget.onAction?.(action, context);
         } catch (error) {
             await safeReply(
                 interaction,
@@ -405,6 +403,8 @@ export class WidgetRouter {
 
             throw error;
         }
+
+        await acknowledgeIfNeeded(interaction);
     }
 
     private async enqueue(
@@ -504,6 +504,35 @@ export class WidgetRouter {
                 this.queues.delete(key);
             }
         }
+    }
+}
+
+/**
+ * Acknowledges an interaction that a handler left unanswered.
+ *
+ * An interaction must be answered within three seconds, and a widget that
+ * forgets to acknowledge it is a bug the user only sees as "This
+ * interaction failed". The router cannot know whether the handler meant to
+ * answer, so it acknowledges on the handler's behalf — but only if the
+ * handler has not already answered.
+ */
+async function acknowledgeIfNeeded(interaction: Interaction): Promise<void> {
+    if (interaction.responded) {
+        return;
+    }
+
+    try {
+        if (interaction.isComponent()) {
+            await interaction.deferUpdate();
+
+            return;
+        }
+
+        if (interaction.isModalSubmit()) {
+            await interaction.defer();
+        }
+    } catch {
+        // The interaction may already have expired.
     }
 }
 

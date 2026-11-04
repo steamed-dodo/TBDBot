@@ -150,6 +150,8 @@ export function createInteraction(
         return null;
     })();
 
+    let responded = false;
+
     const applicationId = raw.application_id;
     const locale = 'locale' in raw ? (raw.locale ?? null) : null;
     const guildLocale =
@@ -179,6 +181,10 @@ export function createInteraction(
         commandOptions: commandData?.options ?? [],
         focusedOption,
 
+        get responded(): boolean {
+            return responded;
+        },
+
         isCommand: () => isCommandInteraction(raw),
         isComponent: () => isComponentInteraction(raw),
         isModalSubmit: () => isModalSubmitInteraction(raw),
@@ -190,6 +196,8 @@ export function createInteraction(
                 interaction.token,
                 toCallbackData(body),
             );
+
+            responded = true;
         },
 
         async defer(body?: { readonly flags?: MessageFlags }): Promise<void> {
@@ -198,10 +206,14 @@ export function createInteraction(
                 interaction.token,
                 body?.flags === undefined ? {} : { flags: body.flags },
             );
+
+            responded = true;
         },
 
         async deferUpdate(): Promise<void> {
             await api.deferMessageUpdate(interaction.id, interaction.token, {});
+
+            responded = true;
         },
 
         async updateMessage(body: MessageEditBody): Promise<void> {
@@ -210,6 +222,8 @@ export function createInteraction(
                 interaction.token,
                 toCallbackData(body) as never,
             );
+
+            responded = true;
         },
 
         async editReply(body: MessageEditBody): Promise<void> {
@@ -218,6 +232,8 @@ export function createInteraction(
                 interaction.token,
                 toCallbackData(body) as never,
             );
+
+            responded = true;
         },
 
         async followUp(body: MessageResponseBody): Promise<void> {
@@ -226,6 +242,8 @@ export function createInteraction(
                 interaction.token,
                 toCallbackData(body) as never,
             );
+
+            responded = true;
         },
 
         async createModal(body: ModalResponseBody): Promise<void> {
@@ -234,6 +252,8 @@ export function createInteraction(
                 title: body.title,
                 components: [...body.components] as never,
             });
+
+            responded = true;
         },
 
         async createAutocompleteResponse(
@@ -249,6 +269,8 @@ export function createInteraction(
                     })),
                 },
             );
+
+            responded = true;
         },
     };
 

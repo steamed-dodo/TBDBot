@@ -20,10 +20,11 @@
         "build:js": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js",
         "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
         "dev": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js --watch",
-        "typecheck": "tsc --noEmit",
+        "typecheck": "tsc --noEmit && tsc -p examples/tsconfig.json",
         "test": "vitest run",
         "test:watch": "vitest",
         "prepack": "npm run build",
+        "example:vertical-slice": "tsx examples/vertical-slice.ts",
         "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
         "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
     },
