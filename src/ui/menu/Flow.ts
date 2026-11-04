@@ -1,4 +1,5 @@
 import { MessageFlags } from 'discord-api-types/v10';
+import { ButtonStyle } from 'discord-api-types/v10';
 
 import type { Interaction } from '../../interaction/types';
 import { generateRoutingId } from '../ids';
@@ -7,6 +8,7 @@ import { deleteTarget, editTarget, sendChannelMessage } from '../messages';
 import { renderContent } from '../render';
 import type { WidgetRouter } from '../router';
 import type {
+    AccessPolicy,
     ActionContext,
     ComponentRow,
     RenderedContent,
@@ -20,6 +22,24 @@ import type {
     Step,
     StepContext,
 } from './types';
+
+/**
+ * Builds the widget access policy from the flow's options.
+ *
+ * @param access - The policy the user asked for.
+ * @param userId - The owner of the flow, when there is one.
+ * @returns The policy the router applies.
+ */
+function toAccessPolicy(
+    access: MenuAccess,
+    userId: string | undefined,
+): AccessPolicy {
+    if (access.type === 'caller-only' && userId !== undefined) {
+        return { type: 'caller-only', userId };
+    }
+
+    return access;
+}
 
 /** Action prefix used by the flows for choice buttons. */
 export const CHOICE_ACTION_PREFIX = 'choice:';
@@ -48,8 +68,13 @@ export abstract class Flow<
     /** Discord user ID allowed to operate the flow. */
     public readonly userId: string | undefined;
 
-    /** Policy controlling which users may interact with the flow. */
-    public readonly access: MenuAccess;
+    /**
+     * Policy controlling which users may interact with the flow.
+     *
+     * The router applies it to every action, so a step's custom buttons are
+     * covered just like the framework's own navigation.
+     */
+    public readonly access: AccessPolicy;
 
     /** Maximum duration of the flow, in milliseconds. */
     public readonly timeout: number;
@@ -105,7 +130,10 @@ export abstract class Flow<
         this.steps = options.steps;
         this.name = options.name ?? 'flow';
         this.userId = options.userId;
-        this.access = options.access ?? { type: 'caller-only' };
+        this.access = toAccessPolicy(
+            options.access ?? { type: 'caller-only' },
+            options.userId,
+        );
         this.timeout = options.timeout ?? 180_000;
         this.deleteOnTimeout = options.deleteOnTimeout ?? false;
         this.namespace = options.namespace ?? 'ui';
@@ -225,12 +253,6 @@ export abstract class Flow<
         action: string,
         context: ActionContext<S>,
     ): Promise<void> {
-        if (!(await this.canInteract(context.interaction))) {
-            await this.denyAccess(context.interaction);
-
-            return;
-        }
-
         // Acknowledge before doing any work: the interaction token is only
         // valid for three seconds.
         await context.interaction.deferUpdate();
@@ -528,8 +550,9 @@ export abstract class Flow<
             step.choices.map((choice) => ({
                 type: 'button' as const,
                 action: this.choiceAction(choice),
+                reserved: true,
                 label: choice.label,
-                ...(choice.style === undefined ? {} : { style: choice.style }),
+                style: choice.style ?? ButtonStyle.Primary,
                 ...(choice.emoji === undefined ? {} : { emoji: choice.emoji }),
                 ...(choice.disabled === undefined
                     ? {}
@@ -548,43 +571,6 @@ export abstract class Flow<
         return `~${CHOICE_ACTION_PREFIX}${choice.value}`;
     }
 
-    /**
-     * Checks whether the interaction may drive the flow.
-     *
-     * @param interaction - The interaction.
-     * @returns `true` when the interaction is allowed.
-     */
-    protected async canInteract(interaction: Interaction): Promise<boolean> {
-        switch (this.access.type) {
-            case 'everyone':
-                return true;
-            case 'caller-only':
-                return this.userId === undefined
-                    ? true
-                    : interaction.userId === this.userId;
-            case 'custom':
-                return (await this.access.filter(interaction)) === true;
-            default:
-                return true;
-        }
-    }
-
-    /**
-     * Answers an interaction that is not allowed to drive the flow.
-     *
-     * @param interaction - The interaction.
-     */
-    protected async denyAccess(interaction: Interaction): Promise<void> {
-        try {
-            await interaction.reply({
-                content: 'You are not allowed to use this menu.',
-                flags: MessageFlags.Ephemeral,
-            });
-        } catch {
-            // The interaction may already have been answered.
-        }
-    }
-
     private async register(
         router: WidgetRouter | undefined,
         state: S,
@@ -595,7 +581,7 @@ export abstract class Flow<
 
         this.router = router;
 
-        await router.register(this as Widget<S>, this.target, state);
+        await router.register(this as Widget<S>, state, this.target);
     }
 
     private startTimeout(): void {

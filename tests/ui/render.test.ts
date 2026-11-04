@@ -1,5 +1,5 @@
 import { EmbedBuilder } from '@discordjs/builders';
-import { ComponentType } from 'discord-api-types/v10';
+import { ComponentType, ButtonStyle } from 'discord-api-types/v10';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -127,5 +127,112 @@ describe('rendering pipeline', () => {
 
         expect(message.embeds).toBeUndefined();
         expect(message.components).toBeUndefined();
+    });
+
+    describe('defects found in the second pass', () => {
+        it('always renders the button style Discord requires', () => {
+            const message = renderContent(
+                { components: [[button('confirm', 'Confirm')]] },
+                'ui',
+                'abc123',
+            );
+
+            const component = message.components?.[0]?.components[0] as Record<
+                string,
+                unknown
+            >;
+
+            expect(component['style']).toBe(ButtonStyle.Primary);
+        });
+
+        it('keeps an explicit button style', () => {
+            const message = renderContent(
+                {
+                    components: [
+                        [
+                            button('confirm', 'Confirm', {
+                                style: ButtonStyle.Danger,
+                            }),
+                        ],
+                    ],
+                },
+                'ui',
+                'abc123',
+            );
+
+            const component = message.components?.[0]?.components[0] as Record<
+                string,
+                unknown
+            >;
+
+            expect(component['style']).toBe(ButtonStyle.Danger);
+        });
+
+        it('rejects a hand-built spec that impersonates a reserved action', () => {
+            expect(() =>
+                renderContent(
+                    {
+                        components: [
+                            [
+                                {
+                                    type: 'button',
+                                    action: '~spoofed',
+                                    label: 'Spoofed',
+                                    style: ButtonStyle.Primary,
+                                },
+                            ],
+                        ],
+                    },
+                    'ui',
+                    'abc123',
+                ),
+            ).toThrow(TypeError);
+        });
+
+        it('rejects a reserved spec with an unknown reserved action', () => {
+            expect(() =>
+                renderContent(
+                    {
+                        components: [
+                            [
+                                {
+                                    type: 'button',
+                                    action: '~spoofed',
+                                    reserved: true,
+                                    label: 'Spoofed',
+                                    style: ButtonStyle.Primary,
+                                },
+                            ],
+                        ],
+                    },
+                    'ui',
+                    'abc123',
+                ),
+            ).toThrow(TypeError);
+        });
+
+        it('mints a reserved custom id for marked specs', () => {
+            const message = renderContent(
+                {
+                    components: [
+                        [
+                            {
+                                type: 'button',
+                                action: '~next',
+                                reserved: true,
+                                label: 'Next',
+                                style: ButtonStyle.Secondary,
+                            },
+                        ],
+                    ],
+                },
+                'ui',
+                'abc123',
+            );
+
+            expect(message.components?.[0]?.components[0]?.custom_id).toBe(
+                'ui:abc123:~next',
+            );
+        });
     });
 });

@@ -37,14 +37,33 @@ export interface ButtonSpec {
     /** Discriminant identifying the component kind. */
     readonly type: 'button';
 
-    /** Action dispatched to the widget when the button is pressed. */
+    /**
+     * Action dispatched to the widget when the button is pressed.
+     *
+     * A user action may not contain the reserved marker; the framework
+     * rejects one when it mints the custom id.
+     */
     readonly action: string;
+
+    /**
+     * Whether the action is one of the framework's reserved actions.
+     *
+     * Only the framework's own chrome sets this. It exists so that a
+     * hand-built specification cannot impersonate the framework's
+     * navigation.
+     */
+    readonly reserved?: boolean;
 
     /** Text displayed on the button. */
     readonly label: string;
 
-    /** Visual style of the button. */
-    readonly style?: ComponentButtonStyle;
+    /**
+     * Visual style of the button.
+     *
+     * Discord requires the field, so it is not optional here; the
+     * `button()` helper defaults it to {@link ButtonStyle.Primary}.
+     */
+    readonly style: ComponentButtonStyle;
 
     /** Emoji displayed on the button. */
     readonly emoji?: EmojiSpec;
@@ -76,8 +95,20 @@ export interface SelectSpec {
     /** Discriminant identifying the component kind. */
     readonly type: 'select';
 
-    /** Action dispatched to the widget when a value is selected. */
+    /**
+     * Action dispatched to the widget when a value is selected.
+     *
+     * A user action may not contain the reserved marker; the framework
+     * rejects one when it mints the custom id.
+     */
     readonly action: string;
+
+    /**
+     * Whether the action is one of the framework's reserved actions.
+     *
+     * Only the framework's own chrome sets this.
+     */
+    readonly reserved?: boolean;
 
     /** Options offered by the select menu. */
     readonly options: readonly SelectOptionSpec[];
@@ -166,6 +197,29 @@ export interface ActionContext<S = unknown> {
 export type NavigationAction = 'next' | 'previous' | 'back' | 'select';
 
 /**
+ * Controls which users may interact with a widget.
+ *
+ * - `everyone`: Any user may interact.
+ * - `caller-only`: Only the user who owns the widget may interact. Without
+ *   an owner there is nobody to restrict it to, so the policy does not
+ *   apply.
+ * - `custom`: Access is determined by a user-provided filter.
+ *
+ * The router applies the policy to **every** action — the framework's own
+ * navigation and the widget's custom actions alike — so it cannot be
+ * bypassed by pressing a button the widget added itself.
+ */
+export type AccessPolicy =
+    | { readonly type: 'everyone' }
+    | { readonly type: 'caller-only'; readonly userId?: string }
+    | {
+          readonly type: 'custom';
+          readonly filter: (
+              interaction: Interaction,
+          ) => boolean | Promise<boolean>;
+      };
+
+/**
  * A unit of state plus the way it is displayed.
  *
  * The widget does not own its state: the framework holds the current value
@@ -189,6 +243,13 @@ export interface Widget<S = unknown> {
      * widgets, which is what makes routing work after a cold start.
      */
     readonly routingId: string;
+
+    /**
+     * Who may interact with the widget.
+     *
+     * The router applies it before dispatching any action.
+     */
+    readonly access?: AccessPolicy;
 
     /**
      * Builds the content displayed by the widget.

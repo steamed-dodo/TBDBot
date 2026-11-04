@@ -1,3 +1,5 @@
+import { ButtonStyle } from 'discord-api-types/v10';
+
 import { createReservedAction } from '../ids';
 import type { ActionContext, ComponentRow } from '../types';
 import { Flow } from './Flow';
@@ -94,7 +96,9 @@ export class Wizard extends Flow<FlowState> {
                 {
                     type: 'button',
                     action: createReservedAction('back'),
+                    reserved: true,
                     label: 'Back',
+                    style: ButtonStyle.Secondary,
                     disabled: state.history.length < 2,
                 },
             ],

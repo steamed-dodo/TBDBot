@@ -257,7 +257,7 @@ export class Modal implements Widget<ModalState> {
             components: data.components,
         });
 
-        await router?.register(this, null, this.initialState());
+        await router?.register(this, this.initialState());
     }
 }
 
