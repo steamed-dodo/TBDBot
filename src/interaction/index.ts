@@ -1,4 +1,4 @@
-export { createInteraction, parsePermissions } from './interaction';
+export { createInteraction } from './interaction';
 export type {
     AutocompleteChoice,
     AutocompleteResponseBody,

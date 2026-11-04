@@ -22,8 +22,13 @@ export type MessageTarget =
           readonly messageId: string;
       }
     | {
-          /** The message is an ephemeral interaction response. */
-          readonly kind: 'ephemeral';
+          /**
+           * The message is the original response of an interaction.
+           *
+           * Interaction responses are not addressable by channel and message
+           * ID, so they are edited through the interaction webhook instead.
+           */
+          readonly kind: 'interaction';
 
           /** ID of the application that owns the interaction. */
           readonly applicationId: string;

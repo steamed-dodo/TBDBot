@@ -45,11 +45,39 @@ export type {
 export type {
     ActionContext,
     ButtonSpec,
+    ComponentButtonStyle,
     ComponentRow,
     ComponentSpec,
+    EmojiSpec,
     NavigationAction,
     RenderedContent,
     SelectOptionSpec,
     SelectSpec,
     Widget,
 } from './types';
+
+export { Menu } from './menu/index';
+export type {
+    Choice,
+    MenuAccess,
+    MenuCompleteHandler,
+    MenuMode,
+    MenuNavigation,
+    MenuOptions,
+    MenuState,
+    Step,
+    StepContent,
+    StepContext,
+} from './menu/index';
+
+export { Modal, buildModalComponents, extractModalValues } from './modal/index';
+export type { ModalField, ModalOptions, ModalState } from './modal/index';
+
+export { Panel, PanelManager, PanelRegistry } from './panel/index';
+export type {
+    PanelAccess,
+    PanelFactory,
+    PanelManagerOptions,
+    PanelStore,
+    StoredPanel,
+} from './panel/index';
