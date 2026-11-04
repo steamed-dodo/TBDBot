@@ -7,5 +7,7 @@ export type {
     PanelAccess,
     PanelFactory,
     PanelStore,
+    PersistentWidget,
     StoredPanel,
+    WidgetFactory,
 } from './types';

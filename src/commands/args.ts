@@ -1,6 +1,4 @@
-import {
-    ApplicationCommandOptionType,
-} from 'discord-api-types/v10';
+import { ApplicationCommandOptionType } from 'discord-api-types/v10';
 import type { Interaction } from '../interaction/types';
 import type { CommandDataOption, CommandOptionResolver } from './options';
 import { findOptionSchema, isChoiceAllowed } from './schema';
@@ -94,10 +92,7 @@ function collectRequired(schema: CommandSchema): OptionSchema[] {
     return required;
 }
 
-function validateOption(
-    option: CommandDataOption,
-    schema: OptionSchema,
-): void {
+function validateOption(option: CommandDataOption, schema: OptionSchema): void {
     if (option.type !== schema.type) {
         throw new TypeError(
             `Option "${schema.name}" is of type ${option.type}, not ${schema.type}.`,
@@ -123,9 +118,7 @@ function validateOption(
         }
     }
 
-    if (
-        schema.type === ApplicationCommandOptionType.String
-    ) {
+    if (schema.type === ApplicationCommandOptionType.String) {
         const value = option.value as string;
 
         if (schema.minLength !== undefined && value.length < schema.minLength) {
@@ -156,10 +149,7 @@ function validateOption(
     }
 }
 
-function readValue(
-    option: CommandDataOption,
-    schema: OptionSchema,
-): unknown {
+function readValue(option: CommandDataOption, schema: OptionSchema): unknown {
     switch (schema.type) {
         case ApplicationCommandOptionType.Integer:
         case ApplicationCommandOptionType.Number:

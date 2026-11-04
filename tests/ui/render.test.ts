@@ -32,18 +32,17 @@ describe('rendering pipeline', () => {
     });
 
     it('honours explicit allowed mentions', () => {
-        const message = renderContent(
-            { content: 'hello' },
-            'ui',
-            'abc123',
-            { allowedMentions: { parse: ['users'] } },
-        );
+        const message = renderContent({ content: 'hello' }, 'ui', 'abc123', {
+            allowedMentions: { parse: ['users'] },
+        });
 
         expect(message.allowed_mentions).toEqual({ parse: ['users'] });
     });
 
     it('converts embeds to their API representation', () => {
-        const embed = new EmbedBuilder().setTitle('Title').setDescription('Body');
+        const embed = new EmbedBuilder()
+            .setTitle('Title')
+            .setDescription('Body');
         const message = renderContent({ embeds: [embed] }, 'ui', 'abc123');
 
         expect(message.embeds).toHaveLength(1);
@@ -55,9 +54,9 @@ describe('rendering pipeline', () => {
             button('a', 'A'),
         ]);
 
-        expect(() => renderContent({ components: rows }, 'ui', 'abc123')).toThrow(
-            RangeError,
-        );
+        expect(() =>
+            renderContent({ components: rows }, 'ui', 'abc123'),
+        ).toThrow(RangeError);
     });
 
     it('rejects more than five components in a row', () => {

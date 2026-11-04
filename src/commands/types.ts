@@ -1,7 +1,5 @@
 import type { SlashCommandBuilder } from '@discordjs/builders';
-import type {
-    RESTPostAPIApplicationCommandsJSONBody,
-} from 'discord-api-types/v10';
+import type { RESTPostAPIApplicationCommandsJSONBody } from 'discord-api-types/v10';
 
 import type { Interaction } from '../interaction/types';
 import type { PermissionResolvable } from '../permissions/bitfield';
@@ -88,7 +86,8 @@ export interface CommandDefinition<TArgs extends CommandArgs = CommandArgs> {
      *
      * All of the listed permissions are required.
      */
-    readonly permissions?: PermissionResolvable | readonly PermissionResolvable[];
+    readonly permissions?:
+        PermissionResolvable | readonly PermissionResolvable[];
 
     /** Whether the command may only be used inside a guild. */
     readonly guildOnly?: boolean;

@@ -44,7 +44,10 @@ export class EventRouter {
         core.on(GatewayDispatchEvents.InteractionCreate, ({ data }) => {
             this.emitter.emit(
                 'interactionCreate',
-                createInteraction(data as APIInteraction, this.core.api.interactions),
+                createInteraction(
+                    data as APIInteraction,
+                    this.core.api.interactions,
+                ),
             );
         });
 

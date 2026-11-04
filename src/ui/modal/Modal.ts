@@ -10,7 +10,10 @@ import type {
     APIModalSubmitInteraction,
     TextInputStyle,
 } from 'discord-api-types/v10';
-import { ComponentType, TextInputStyle as TextInputStyles } from 'discord-api-types/v10';
+import {
+    ComponentType,
+    TextInputStyle as TextInputStyles,
+} from 'discord-api-types/v10';
 
 import type { Interaction } from '../../interaction/types';
 import { createCustomId, generateRoutingId } from '../ids';
@@ -279,7 +282,8 @@ export function extractModalValues(
     const raw = interaction.raw as APIModalSubmitInteraction;
     const values: Record<string, string> = {};
 
-    for (const component of raw.data.components as APIModalSubmissionComponent[]) {
+    for (const component of raw.data
+        .components as APIModalSubmissionComponent[]) {
         if (component.type === ComponentType.ActionRow) {
             for (const child of component.components) {
                 if (child.type === ComponentType.TextInput) {

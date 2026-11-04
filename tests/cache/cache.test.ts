@@ -26,9 +26,7 @@ describe('cache', () => {
 
         await cache.set('roles', 'guild-1', [{ id: 'role-1' }]);
 
-        expect(await cache.get('roles', 'guild-1')).toEqual([
-            { id: 'role-1' },
-        ]);
+        expect(await cache.get('roles', 'guild-1')).toEqual([{ id: 'role-1' }]);
     });
 
     it('does not store values for disabled kinds', async () => {

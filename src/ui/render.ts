@@ -113,7 +113,9 @@ export function button(
         label,
         ...(options.style === undefined ? {} : { style: options.style }),
         ...(options.emoji === undefined ? {} : { emoji: options.emoji }),
-        ...(options.disabled === undefined ? {} : { disabled: options.disabled }),
+        ...(options.disabled === undefined
+            ? {}
+            : { disabled: options.disabled }),
     };
 }
 
@@ -146,7 +148,9 @@ export function select(
     }
 
     if (options.length > 25) {
-        throw new RangeError('Select menu must not define more than 25 options.');
+        throw new RangeError(
+            'Select menu must not define more than 25 options.',
+        );
     }
 
     return {
@@ -159,12 +163,16 @@ export function select(
                 ? {}
                 : { description: option.description }),
             ...(option.emoji === undefined ? {} : { emoji: option.emoji }),
-            ...(option.default === undefined ? {} : { default: option.default }),
+            ...(option.default === undefined
+                ? {}
+                : { default: option.default }),
         })),
         ...(details.placeholder === undefined
             ? {}
             : { placeholder: details.placeholder }),
-        ...(details.disabled === undefined ? {} : { disabled: details.disabled }),
+        ...(details.disabled === undefined
+            ? {}
+            : { disabled: details.disabled }),
     };
 }
 
@@ -195,7 +203,9 @@ export function navigationSelect(
     }
 
     if (options.length > 25) {
-        throw new RangeError('Select menu must not define more than 25 options.');
+        throw new RangeError(
+            'Select menu must not define more than 25 options.',
+        );
     }
 
     return {
@@ -208,12 +218,16 @@ export function navigationSelect(
                 ? {}
                 : { description: option.description }),
             ...(option.emoji === undefined ? {} : { emoji: option.emoji }),
-            ...(option.default === undefined ? {} : { default: option.default }),
+            ...(option.default === undefined
+                ? {}
+                : { default: option.default }),
         })),
         ...(details.placeholder === undefined
             ? {}
             : { placeholder: details.placeholder }),
-        ...(details.disabled === undefined ? {} : { disabled: details.disabled }),
+        ...(details.disabled === undefined
+            ? {}
+            : { disabled: details.disabled }),
     };
 }
 
@@ -295,7 +309,9 @@ function renderRow(
     widgetId: string,
 ): APIMessageTopLevelComponent {
     if (row.length === 0) {
-        throw new TypeError('An action row must contain at least one component.');
+        throw new TypeError(
+            'An action row must contain at least one component.',
+        );
     }
 
     if (row.length > MAX_COMPONENTS_PER_ROW) {
@@ -329,7 +345,8 @@ function renderComponent(
     component: ComponentSpec,
     namespace: string,
     widgetId: string,
-): APIButtonComponent | APIStringSelectComponent {    if (component.type === 'button') {
+): APIButtonComponent | APIStringSelectComponent {
+    if (component.type === 'button') {
         return renderButton(component, namespace, widgetId);
     }
 
@@ -375,10 +392,16 @@ function renderSelect(
             ...(option.description === undefined
                 ? {}
                 : { description: option.description }),
-            ...(option.emoji === undefined ? {} : { emoji: toEmoji(option.emoji) }),
-            ...(option.default === undefined ? {} : { default: option.default }),
+            ...(option.emoji === undefined
+                ? {}
+                : { emoji: toEmoji(option.emoji) }),
+            ...(option.default === undefined
+                ? {}
+                : { default: option.default }),
         })),
-        ...(spec.placeholder === undefined ? {} : { placeholder: spec.placeholder }),
+        ...(spec.placeholder === undefined
+            ? {}
+            : { placeholder: spec.placeholder }),
         ...(spec.disabled === undefined ? {} : { disabled: spec.disabled }),
     } as APIStringSelectComponent;
 }

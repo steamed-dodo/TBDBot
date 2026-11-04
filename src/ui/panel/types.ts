@@ -1,5 +1,45 @@
 import type { Interaction } from '../../interaction/types';
+import type { Widget } from '../types';
 import type { Panel } from './Panel';
+
+/**
+ * A widget that can be persisted and restored.
+ *
+ * The panel manager works with this interface rather than with {@link Panel}
+ * specifically, so any widget — a persistent menu, for example — can survive
+ * a restart.
+ */
+export interface PersistentWidget extends Widget {
+    /** Stable, user-facing identity of the widget. */
+    readonly id: string;
+
+    /** Short, framework-generated identity used for routing. */
+    readonly routingId: string;
+
+    /** The type used to look up the factory that recreates the widget. */
+    readonly type: string;
+
+    /** ID of the Discord message backing the widget, when attached. */
+    messageId: string | null;
+
+    /** ID of the channel containing the widget's message, when attached. */
+    channelId: string | null;
+
+    /** ID of the guild containing the widget's message, when attached. */
+    guildId: string | null;
+
+    /** The state that should be persisted. */
+    serialize(): unknown;
+
+    /** Called when the widget is registered with a manager. */
+    onCreate?(): Promise<void>;
+
+    /** Called after the widget has been restored from persistence. */
+    onLoad?(): Promise<void>;
+
+    /** Called when the widget is unregistered or deleted. */
+    onDestroy?(): Promise<void>;
+}
 
 /**
  * Serializable representation of a panel and its Discord message.
@@ -60,6 +100,12 @@ export interface PanelStore {
  */
 export type PanelFactory = (record: StoredPanel) => Panel | Promise<Panel>;
 
+/**
+ * Recreates any persistent widget from a stored record.
+ */
+export type WidgetFactory = (
+    record: StoredPanel,
+) => PersistentWidget | Promise<PersistentWidget>;
 /**
  * Controls which users may interact with a panel.
  *

@@ -1,11 +1,7 @@
 import type { EmbedBuilder } from '@discordjs/builders';
 import type { API } from '@discordjs/core';
 import type { Interaction } from '../../interaction/types';
-import type {
-    ComponentButtonStyle,
-    ComponentRow,
-    EmojiSpec,
-} from '../types';
+import type { ComponentButtonStyle, ComponentRow, EmojiSpec } from '../types';
 import type { Menu } from './Menu';
 
 /**
@@ -122,7 +118,8 @@ export type MenuMode = 'menu' | 'wizard';
  * - `select`: A step select menu only.
  * - `wizard`: A Back button only; steps provide their own choices.
  */
-export type MenuNavigation = 'prev-next' | 'prev-select-next' | 'select' | 'wizard';
+export type MenuNavigation =
+    'prev-next' | 'prev-select-next' | 'select' | 'wizard';
 
 /**
  * Controls which users may interact with a menu.
@@ -161,7 +158,9 @@ export interface MenuState {
 /**
  * Called after the final step has been completed.
  */
-export type MenuCompleteHandler = (context: StepContext) => void | Promise<void>;
+export type MenuCompleteHandler = (
+    context: StepContext,
+) => void | Promise<void>;
 
 /**
  * Configuration options used to construct a {@link Menu}.
@@ -250,4 +249,11 @@ export interface MenuOptions {
      * @defaultValue 'ui'
      */
     readonly namespace?: string;
+
+    /**
+     * The type used to look up the factory that recreates the menu.
+     *
+     * @defaultValue 'menu'
+     */
+    readonly type?: string;
 }

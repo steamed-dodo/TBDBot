@@ -10,10 +10,7 @@ export type ConfigSchema = Record<string, ConfigField>;
  * A single configuration field.
  */
 export type ConfigField =
-    | StringField
-    | NumberField
-    | BooleanField
-    | ObjectField;
+    StringField | NumberField | BooleanField | ObjectField;
 
 /**
  * A string field.

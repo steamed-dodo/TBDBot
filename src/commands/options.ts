@@ -56,9 +56,14 @@ export class CommandOptionResolver {
         this.interaction = interaction;
         this.resolved = interaction.resolved ?? {};
 
-        const raw = (interaction.raw as {
-            data?: { options?: APIApplicationCommandInteractionDataOption[] };
-        }).data?.options ?? [];
+        const raw =
+            (
+                interaction.raw as {
+                    data?: {
+                        options?: APIApplicationCommandInteractionDataOption[];
+                    };
+                }
+            ).data?.options ?? [];
 
         this.rawOptions = raw;
 
@@ -66,8 +71,7 @@ export class CommandOptionResolver {
             | APIApplicationCommandInteractionDataSubcommandGroupOption
             | undefined;
         let subcommand:
-            | APIApplicationCommandInteractionDataSubcommandOption
-            | undefined;
+            APIApplicationCommandInteractionDataSubcommandOption | undefined;
 
         for (const option of raw) {
             if (option.type === ApplicationCommandOptionType.SubcommandGroup) {
@@ -104,7 +108,10 @@ export class CommandOptionResolver {
      * @returns The value, or `null` when the option is absent.
      */
     public getString(name: string, required = false): string | null {
-        const option = this.getOption(name, ApplicationCommandOptionType.String);
+        const option = this.getOption(
+            name,
+            ApplicationCommandOptionType.String,
+        );
 
         if (!option) {
             return this.missing(name, required);
@@ -121,7 +128,10 @@ export class CommandOptionResolver {
      * @returns The value, or `null` when the option is absent.
      */
     public getInteger(name: string, required = false): number | null {
-        const option = this.getOption(name, ApplicationCommandOptionType.Integer);
+        const option = this.getOption(
+            name,
+            ApplicationCommandOptionType.Integer,
+        );
 
         if (!option) {
             return this.missing(name, required);
@@ -138,7 +148,10 @@ export class CommandOptionResolver {
      * @returns The value, or `null` when the option is absent.
      */
     public getNumber(name: string, required = false): number | null {
-        const option = this.getOption(name, ApplicationCommandOptionType.Number);
+        const option = this.getOption(
+            name,
+            ApplicationCommandOptionType.Number,
+        );
 
         if (!option) {
             return this.missing(name, required);
@@ -155,7 +168,10 @@ export class CommandOptionResolver {
      * @returns The value, or `null` when the option is absent.
      */
     public getBoolean(name: string, required = false): boolean | null {
-        const option = this.getOption(name, ApplicationCommandOptionType.Boolean);
+        const option = this.getOption(
+            name,
+            ApplicationCommandOptionType.Boolean,
+        );
 
         if (!option) {
             return this.missing(name, required);
@@ -223,7 +239,10 @@ export class CommandOptionResolver {
         required = false,
         channelTypes?: readonly ChannelType[],
     ): string | null {
-        const option = this.getOption(name, ApplicationCommandOptionType.Channel);
+        const option = this.getOption(
+            name,
+            ApplicationCommandOptionType.Channel,
+        );
 
         if (!option) {
             return this.missing(name, required);

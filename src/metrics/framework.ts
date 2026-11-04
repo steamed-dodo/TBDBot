@@ -158,7 +158,9 @@ export class FrameworkMetrics {
      * @returns The running server.
      */
     public serve(
-        options: Omit<ServeMetricsOptions, 'registry'> & { readonly registry?: MetricRegistry },
+        options: Omit<ServeMetricsOptions, 'registry'> & {
+            readonly registry?: MetricRegistry;
+        },
     ): Server {
         return serveMetrics({
             ...options,

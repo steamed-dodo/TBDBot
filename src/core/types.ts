@@ -141,7 +141,9 @@ export interface FrameworkEventMap {
     resumed: [info: { shardId: number }];
 
     /** Emitted for every incoming interaction. */
-    interactionCreate: [interaction: import('../interaction/types').Interaction];
+    interactionCreate: [
+        interaction: import('../interaction/types').Interaction,
+    ];
 
     /** Emitted when a message is created. */
     messageCreate: [event: MessageEvent];
@@ -153,7 +155,13 @@ export interface FrameworkEventMap {
     messageDelete: [event: MessageEvent];
 
     /** Emitted when messages are deleted in bulk. */
-    messageDeleteBulk: [event: { channelId: string; guildId: string | null; ids: readonly string[] }];
+    messageDeleteBulk: [
+        event: {
+            channelId: string;
+            guildId: string | null;
+            ids: readonly string[];
+        },
+    ];
 
     /** Emitted when the bot joins a guild. */
     guildCreate: [event: GuildEvent];
@@ -183,7 +191,9 @@ export interface FrameworkEventMap {
     guildMemberUpdate: [event: GuildMemberEvent];
 
     /** Emitted when a chunk of guild members is received. */
-    guildMembersChunk: [event: GuildEvent & { count: number; nonce: string | null }];
+    guildMembersChunk: [
+        event: GuildEvent & { count: number; nonce: string | null },
+    ];
 
     /** Emitted when a role is created. */
     guildRoleCreate: [event: GuildRoleEvent];
@@ -204,16 +214,41 @@ export interface FrameworkEventMap {
     userUpdate: [event: { userId: string; raw: GatewayUserUpdateDispatchData }];
 
     /** Emitted when a presence is updated. */
-    presenceUpdate: [event: { userId: string; guildId: string | null; raw: GatewayPresenceUpdateDispatchData }];
+    presenceUpdate: [
+        event: {
+            userId: string;
+            guildId: string | null;
+            raw: GatewayPresenceUpdateDispatchData;
+        },
+    ];
 
     /** Emitted when a user starts typing. */
-    typingStart: [event: { channelId: string; guildId: string | null; userId: string; raw: GatewayTypingStartDispatchData }];
+    typingStart: [
+        event: {
+            channelId: string;
+            guildId: string | null;
+            userId: string;
+            raw: GatewayTypingStartDispatchData;
+        },
+    ];
 
     /** Emitted when a voice state changes. */
-    voiceStateUpdate: [event: { guildId: string | null; userId: string; raw: GatewayVoiceStateUpdateDispatchData }];
+    voiceStateUpdate: [
+        event: {
+            guildId: string | null;
+            userId: string;
+            raw: GatewayVoiceStateUpdateDispatchData;
+        },
+    ];
 
     /** Emitted when a channel's webhook is updated. */
-    webhooksUpdate: [event: { channelId: string; guildId: string | null; raw: GatewayWebhooksUpdateDispatchData }];
+    webhooksUpdate: [
+        event: {
+            channelId: string;
+            guildId: string | null;
+            raw: GatewayWebhooksUpdateDispatchData;
+        },
+    ];
 
     /** Emitted when a thread is created. */
     threadCreate: [event: ChannelEvent];
@@ -225,7 +260,11 @@ export interface FrameworkEventMap {
     threadDelete: [event: ChannelEvent];
 
     /** Emitted when an audit log entry is created. */
-    guildAuditLogEntryCreate: [event: GuildEvent & { raw: GatewayGuildAuditLogEntryCreateDispatchData }];
+    guildAuditLogEntryCreate: [
+        event: GuildEvent & {
+            raw: GatewayGuildAuditLogEntryCreateDispatchData;
+        },
+    ];
 
     /** Emitted when the framework reports an error. */
     error: [error: Error];
@@ -271,7 +310,8 @@ export type RawRolePayload =
 export type RawMembersChunkPayload = GatewayGuildMembersChunkDispatchData;
 
 /** Convenience alias for the raw payload of a ban event. */
-export type RawBanPayload = GatewayGuildBanAddDispatchData | GatewayGuildBanRemoveDispatchData;
+export type RawBanPayload =
+    GatewayGuildBanAddDispatchData | GatewayGuildBanRemoveDispatchData;
 
 /** Convenience alias for the raw payload of a thread event. */
 export type RawThreadPayload =

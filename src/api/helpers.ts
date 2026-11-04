@@ -41,9 +41,14 @@ export class ApiHelpers {
     constructor(public readonly api: API) {}
 
     /** Sends a message to a channel. */
-    async sendMessage(channelId: string, options: SendMessageOptions): Promise<APIMessage> {
+    async sendMessage(
+        channelId: string,
+        options: SendMessageOptions,
+    ): Promise<APIMessage> {
         return this.api.channels.createMessage(channelId, {
-            ...(options.content === undefined ? {} : { content: options.content }),
+            ...(options.content === undefined
+                ? {}
+                : { content: options.content }),
             ...(options.embeds === undefined
                 ? {}
                 : { embeds: options.embeds as never[] }),
@@ -63,7 +68,9 @@ export class ApiHelpers {
         options: SendMessageOptions,
     ): Promise<APIMessage> {
         return this.api.channels.editMessage(channelId, messageId, {
-            ...(options.content === undefined ? {} : { content: options.content }),
+            ...(options.content === undefined
+                ? {}
+                : { content: options.content }),
             ...(options.embeds === undefined
                 ? {}
                 : { embeds: options.embeds as never[] }),
@@ -97,7 +104,10 @@ export class ApiHelpers {
     }
 
     /** Fetches a single guild member. */
-    async getGuildMember(guildId: string, userId: string): Promise<APIGuildMember> {
+    async getGuildMember(
+        guildId: string,
+        userId: string,
+    ): Promise<APIGuildMember> {
         return this.api.guilds.getMember(guildId, userId);
     }
 
@@ -131,7 +141,9 @@ export class ApiHelpers {
     }
 
     /** Fetches the global application commands. */
-    async getGlobalCommands(applicationId: string): Promise<APIApplicationCommand[]> {
+    async getGlobalCommands(
+        applicationId: string,
+    ): Promise<APIApplicationCommand[]> {
         return this.api.applicationCommands.getGlobalCommands(applicationId);
     }
 }

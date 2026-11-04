@@ -25,15 +25,21 @@ import type {
 
 export { parsePermissions };
 
-function isComponentInteraction(raw: APIInteraction): raw is APIMessageComponentInteraction {
+function isComponentInteraction(
+    raw: APIInteraction,
+): raw is APIMessageComponentInteraction {
     return raw.type === InteractionType.MessageComponent;
 }
 
-function isModalSubmitInteraction(raw: APIInteraction): raw is APIModalSubmitInteraction {
+function isModalSubmitInteraction(
+    raw: APIInteraction,
+): raw is APIModalSubmitInteraction {
     return raw.type === InteractionType.ModalSubmit;
 }
 
-function isCommandInteraction(raw: APIInteraction): raw is APIApplicationCommandInteraction {
+function isCommandInteraction(
+    raw: APIInteraction,
+): raw is APIApplicationCommandInteraction {
     return raw.type === InteractionType.ApplicationCommand;
 }
 
@@ -43,10 +49,14 @@ function isAutocompleteInteraction(
     return raw.type === InteractionType.ApplicationCommandAutocomplete;
 }
 
-function hasValues(
-    data: { component_type: ComponentType; values?: unknown },
-): data is { component_type: ComponentType; values: string[] } {
-    return data.component_type !== ComponentType.Button && Array.isArray(data.values);
+function hasValues(data: {
+    component_type: ComponentType;
+    values?: unknown;
+}): data is { component_type: ComponentType; values: string[] } {
+    return (
+        data.component_type !== ComponentType.Button &&
+        Array.isArray(data.values)
+    );
 }
 
 /**
@@ -56,7 +66,10 @@ function hasValues(
  * @param api - The REST facade used to respond to the interaction.
  * @returns A plain-data view over the interaction.
  */
-export function createInteraction(raw: APIInteraction, api: InteractionsAPI): Interaction {
+export function createInteraction(
+    raw: APIInteraction,
+    api: InteractionsAPI,
+): Interaction {
     const member = raw.member ?? null;
     const user = raw.user ?? member?.user ?? null;
 
@@ -105,7 +118,8 @@ export function createInteraction(raw: APIInteraction, api: InteractionsAPI): In
         }
 
         if (commandData) {
-            return (commandData.resolved ?? null) as APIInteractionDataResolved | null;
+            return (commandData.resolved ??
+                null) as APIInteractionDataResolved | null;
         }
 
         return null;
@@ -137,7 +151,8 @@ export function createInteraction(raw: APIInteraction, api: InteractionsAPI): In
 
     const applicationId = raw.application_id;
     const locale = 'locale' in raw ? (raw.locale ?? null) : null;
-    const guildLocale = 'guild_locale' in raw ? (raw.guild_locale ?? null) : null;
+    const guildLocale =
+        'guild_locale' in raw ? (raw.guild_locale ?? null) : null;
 
     const interaction: Interaction = {
         raw,
@@ -168,7 +183,11 @@ export function createInteraction(raw: APIInteraction, api: InteractionsAPI): In
         isAutocomplete: () => isAutocompleteInteraction(raw),
 
         async reply(body: MessageResponseBody): Promise<void> {
-            await api.reply(interaction.id, interaction.token, toCallbackData(body));
+            await api.reply(
+                interaction.id,
+                interaction.token,
+                toCallbackData(body),
+            );
         },
 
         async defer(body?: { readonly flags?: MessageFlags }): Promise<void> {
@@ -243,7 +262,9 @@ interface CallbackData {
     tts?: boolean;
 }
 
-function toCallbackData(body: MessageResponseBody | MessageEditBody): CallbackData {
+function toCallbackData(
+    body: MessageResponseBody | MessageEditBody,
+): CallbackData {
     const result: CallbackData = {};
 
     if (body.content !== undefined && body.content !== null) {

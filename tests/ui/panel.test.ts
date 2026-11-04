@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { MemoryPanelStore } from '../../src/ui/panel/PanelStore';
 import { PanelManager } from '../../src/ui/panel/PanelManager';
+import { Menu } from '../../src/ui/menu/Menu';
 import { Panel } from '../../src/ui/panel/Panel';
 import { WidgetRouter } from '../../src/ui/router';
 import { MockTransport } from '../../src/testing/mock';
@@ -87,7 +88,10 @@ describe('panel manager', () => {
     it('restores panels and re-registers their custom ids', async () => {
         const manager = new PanelManager({ api, router, store });
 
-        manager.define('test', (record) => new TestPanel(record.id, record.routingId));
+        manager.define(
+            'test',
+            (record) => new TestPanel(record.id, record.routingId),
+        );
 
         await store.save([
             {
@@ -178,5 +182,67 @@ describe('panel manager', () => {
         expect(manager.get('panel-1')).toBeUndefined();
         expect(router.get('route123')).toBeUndefined();
         expect(await store.load()).toHaveLength(0);
+    });
+
+    it('persists and restores a menu', async () => {
+        const manager = new PanelManager({ api, router, store });
+        const steps = [
+            { id: 'one', render: () => ({ content: 'first' }) },
+            { id: 'two', render: () => ({ content: 'second' }) },
+        ];
+
+        const menu = new Menu({
+            api,
+            steps,
+            routingId: 'menu123',
+            type: 'menu',
+            access: { type: 'everyone' },
+        });
+
+        await menu.setStep('two');
+
+        manager.define('menu', (record) => {
+            const restored = new Menu({
+                api,
+                steps,
+                routingId: record.routingId,
+                type: record.type,
+            });
+
+            restored.restore(record.data as never);
+
+            return restored as never;
+        });
+
+        await manager.attach(menu as never, 'channel-1', 'guild-1');
+
+        const records = await store.load();
+
+        expect(records[0]?.type).toBe('menu');
+        expect(records[0]?.routingId).toBe('menu123');
+        expect(records[0]?.data).toMatchObject({ currentStepId: 'two' });
+
+        const restoredManager = new PanelManager({ api, router, store });
+
+        restoredManager.define('menu', (record) => {
+            const restored = new Menu({
+                api,
+                steps,
+                routingId: record.routingId,
+                type: record.type,
+            });
+
+            restored.restore(record.data as never);
+
+            return restored as never;
+        });
+
+        await restoredManager.start();
+
+        const restored = restoredManager.get(menu.id) as unknown as Menu;
+
+        expect(restored).toBeDefined();
+        expect(restored.state.currentStepId).toBe('two');
+        expect(router.get('menu123')).toBe(restored);
     });
 });

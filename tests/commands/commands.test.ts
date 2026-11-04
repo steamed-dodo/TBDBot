@@ -11,6 +11,7 @@ import { resolveArgs } from '../../src/commands/args';
 import { createInteraction } from '../../src/interaction/interaction';
 import { MockTransport } from '../../src/testing/mock';
 import { createCommandInteraction } from '../../src/testing/factories';
+import { createAutocompleteInteraction } from '../../src/testing/factories';
 
 function createApi(transport: MockTransport): API {
     const rest = new REST({ makeRequest: transport.makeRequest });
@@ -257,7 +258,12 @@ describe('command manager', () => {
             .setName('ping')
             .setDescription('Ping');
 
-        manager.add({ name: 'ping', description: 'Ping', builder, execute: () => undefined });
+        manager.add({
+            name: 'ping',
+            description: 'Ping',
+            builder,
+            execute: () => undefined,
+        });
 
         expect(() =>
             manager.add({
@@ -274,7 +280,10 @@ describe('command manager', () => {
             .setName('echo')
             .setDescription('Echo')
             .addStringOption((option) =>
-                option.setName('text').setDescription('The text').setRequired(true),
+                option
+                    .setName('text')
+                    .setDescription('The text')
+                    .setRequired(true),
             );
 
         let received: unknown;
@@ -444,7 +453,12 @@ describe('command manager', () => {
             .setName('ping')
             .setDescription('Ping');
 
-        manager.add({ name: 'ping', description: 'Ping', builder, execute: () => undefined });
+        manager.add({
+            name: 'ping',
+            description: 'Ping',
+            builder,
+            execute: () => undefined,
+        });
 
         await manager.registerGlobal('app-1');
 
@@ -452,5 +466,62 @@ describe('command manager', () => {
 
         expect(request?.method).toBe('PUT');
         expect(request?.url).toContain('/applications/app-1/commands');
+    });
+
+    it('registers the commands per guild during development', async () => {
+        const builder = new SlashCommandBuilder()
+            .setName('ping')
+            .setDescription('Ping');
+
+        manager.add({
+            name: 'ping',
+            description: 'Ping',
+            builder,
+            execute: () => undefined,
+        });
+
+        await manager.register({
+            applicationId: 'app-1',
+            guildIds: ['guild-1'],
+        });
+
+        const request = transport.requests.at(-1);
+
+        expect(request?.method).toBe('PUT');
+        expect(request?.url).toContain(
+            '/applications/app-1/guilds/guild-1/commands',
+        );
+    });
+
+    it('rejects an autocomplete request for an option without autocomplete', async () => {
+        const builder = new SlashCommandBuilder()
+            .setName('tag')
+            .setDescription('Tag')
+            .addStringOption((option) =>
+                option.setName('name').setDescription('Name'),
+            );
+
+        manager.add({
+            name: 'tag',
+            description: 'Tag',
+            builder,
+            execute: () => undefined,
+        });
+
+        const handled = await manager.handleAutocomplete(
+            createInteraction(
+                createAutocompleteInteraction('tag', {
+                    name: 'name',
+                    type: ApplicationCommandOptionType.String,
+                    value: 'par',
+                }),
+                api.interactions,
+            ),
+            async () => {
+                throw new Error('The handler must not run.');
+            },
+        );
+
+        expect(handled).toBe(true);
     });
 });

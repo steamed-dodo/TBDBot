@@ -12,7 +12,10 @@ import type {
     ComponentType,
     InteractionType,
 } from 'discord-api-types/v10';
-import { ComponentType as ComponentTypes, InteractionType as InteractionTypes } from 'discord-api-types/v10';
+import {
+    ComponentType as ComponentTypes,
+    InteractionType as InteractionTypes,
+} from 'discord-api-types/v10';
 
 /** A snowflake used by the payload builders. */
 export const TEST_ID = '123456789012345678';
@@ -106,9 +109,7 @@ export function createRole(overrides: Partial<APIRole> = {}): APIRole {
  * @param overrides - Values overriding the defaults.
  * @returns The channel payload.
  */
-export function createChannel(
-    overrides: Partial<APIChannel> = {},
-): APIChannel {
+export function createChannel(overrides: Partial<APIChannel> = {}): APIChannel {
     return {
         id: TEST_ID,
         type: 0,
@@ -331,6 +332,40 @@ export function createModalSubmitInteraction(
         data: {
             custom_id: customId,
             components,
+        },
+    };
+
+    return payload as unknown as APIInteraction;
+}
+
+/**
+ * Builds an autocomplete interaction payload.
+ *
+ * @param name - Name of the invoked command.
+ * @param focused - The focused option.
+ * @param options - Additional factory options.
+ * @returns The interaction payload.
+ */
+export function createAutocompleteInteraction(
+    name: string,
+    focused: {
+        readonly name: string;
+        readonly type: ApplicationCommandOptionType;
+        readonly value: string;
+    },
+    options: InteractionFactoryOptions = {},
+): APIInteraction {
+    const payload = {
+        ...baseInteraction(
+            InteractionTypes.ApplicationCommandAutocomplete,
+            options,
+        ),
+        data: {
+            id: TEST_ID,
+            name,
+            type: 1,
+            focused_option: focused,
+            options: [],
         },
     };
 

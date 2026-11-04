@@ -92,7 +92,8 @@ export interface CommandSchema {
 export function deriveSchemaFromBuilder(
     builder: SlashCommandBuilder,
 ): CommandSchema {
-    const options = builder.options as unknown as readonly APIApplicationCommandOption[];
+    const options =
+        builder.options as unknown as readonly APIApplicationCommandOption[];
 
     return {
         name: builder.name,
@@ -107,13 +108,11 @@ export function deriveSchemaFromBuilder(
  * @param command - The raw command JSON.
  * @returns The derived schema.
  */
-export function deriveSchemaFromCommand(
-    command: {
-        readonly name: string;
-        readonly description: string;
-        readonly options?: readonly APIApplicationCommandOption[];
-    },
-): CommandSchema {
+export function deriveSchemaFromCommand(command: {
+    readonly name: string;
+    readonly description: string;
+    readonly options?: readonly APIApplicationCommandOption[];
+}): CommandSchema {
     return {
         name: command.name,
         description: command.description,
@@ -121,15 +120,14 @@ export function deriveSchemaFromCommand(
     };
 }
 
-function deriveOptionSchema(
-    option: APIApplicationCommandOption,
-): OptionSchema {
+function deriveOptionSchema(option: APIApplicationCommandOption): OptionSchema {
     const base = {
         name: option.name,
         type: option.type,
         description: option.description ?? '',
         required: option.required ?? false,
-        autocomplete: 'autocomplete' in option ? (option.autocomplete ?? false) : false,
+        autocomplete:
+            'autocomplete' in option ? (option.autocomplete ?? false) : false,
     };
 
     const choices = 'choices' in option ? option.choices : undefined;

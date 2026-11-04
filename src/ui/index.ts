@@ -3,7 +3,9 @@ export {
     MAX_CUSTOM_ID_LENGTH,
     RESERVED_ACTION_PREFIX,
     RESERVED_ACTIONS,
+    RESERVED_NAMESPACES,
     ROUTING_ID_LENGTH,
+    assertUserNamespace,
     assertValidAction,
     assertValidNamespace,
     createCustomId,
@@ -14,11 +16,7 @@ export {
     splitAction,
 } from './ids';
 export type { ParsedCustomId, ReservedAction } from './ids';
-export {
-    deleteTarget,
-    editTarget,
-    sendChannelMessage,
-} from './messages';
+export { deleteTarget, editTarget, sendChannelMessage } from './messages';
 export type { MessageTarget } from './messages';
 export {
     DEFAULT_ALLOWED_MENTIONS,
@@ -38,10 +36,7 @@ export {
     WidgetRouter,
     widgetCustomId,
 } from './router';
-export type {
-    RegisteredWidget,
-    WidgetRouterOptions,
-} from './router';
+export type { RegisteredWidget, WidgetRouterOptions } from './router';
 export type {
     ActionContext,
     ButtonSpec,

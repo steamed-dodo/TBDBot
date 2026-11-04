@@ -128,6 +128,30 @@ export function assertValidNamespace(namespace: string): void {
 }
 
 /**
+ * Namespaces reserved by the framework for its own components.
+ *
+ * User components must not use them; the framework validates and throws on a
+ * collision.
+ */
+export const RESERVED_NAMESPACES = [FRAMEWORK_NAMESPACE] as const;
+
+/**
+ * Validates a namespace chosen by a user.
+ *
+ * @param namespace - Namespace to validate.
+ * @throws {TypeError} If the namespace is empty, malformed, or reserved.
+ */
+export function assertUserNamespace(namespace: string): void {
+    assertValidNamespace(namespace);
+
+    if ((RESERVED_NAMESPACES as readonly string[]).includes(namespace)) {
+        throw new TypeError(
+            `The namespace "${namespace}" is reserved by the framework.`,
+        );
+    }
+}
+
+/**
  * Builds a framework-minted custom id.
  *
  * @param namespace - Namespace the component belongs to.
@@ -195,10 +219,7 @@ export function parseCustomId(customId: string): ParsedCustomId | null {
     }
 
     const namespace = customId.slice(0, firstSeparator);
-    const widgetId = customId.slice(
-        firstSeparator + 1,
-        secondSeparator,
-    );
+    const widgetId = customId.slice(firstSeparator + 1, secondSeparator);
     const action = customId.slice(secondSeparator + 1);
 
     if (action.length === 0) {
@@ -232,7 +253,10 @@ export function splitAction(action: string): {
         return { reserved: false, name: action };
     }
 
-    return { reserved: true, name: action.slice(RESERVED_ACTION_PREFIX.length) };
+    return {
+        reserved: true,
+        name: action.slice(RESERVED_ACTION_PREFIX.length),
+    };
 }
 
 /**

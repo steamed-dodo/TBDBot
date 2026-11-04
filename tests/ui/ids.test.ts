@@ -4,6 +4,8 @@ import {
     FRAMEWORK_NAMESPACE,
     MAX_CUSTOM_ID_LENGTH,
     RESERVED_ACTION_PREFIX,
+    RESERVED_NAMESPACES,
+    assertUserNamespace,
     assertValidAction,
     assertValidNamespace,
     createCustomId,
@@ -46,7 +48,9 @@ describe('custom ids', () => {
 
     it('rejects namespaces containing the separator', () => {
         expect(() => assertValidNamespace('a:b')).toThrow(TypeError);
-        expect(() => createCustomId('a:b', 'abc', 'confirm')).toThrow(TypeError);
+        expect(() => createCustomId('a:b', 'abc', 'confirm')).toThrow(
+            TypeError,
+        );
     });
 
     it('rejects actions containing the reserved marker', () => {
@@ -113,5 +117,11 @@ describe('routing ids', () => {
 describe('namespaces', () => {
     it('reserves the framework namespace', () => {
         expect(FRAMEWORK_NAMESPACE).toBe('ui');
+        expect(RESERVED_NAMESPACES).toContain('ui');
+    });
+
+    it('refuses to let a user take a reserved namespace', () => {
+        expect(() => assertUserNamespace('ui')).toThrow(TypeError);
+        expect(() => assertUserNamespace('app')).not.toThrow();
     });
 });

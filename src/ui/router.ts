@@ -367,7 +367,10 @@ export class WidgetRouter {
             if (dropped) {
                 this.queuedCount -= 1;
 
-                await safeReply(dropped.interaction, 'This interaction expired.');
+                await safeReply(
+                    dropped.interaction,
+                    'This interaction expired.',
+                );
             }
         }
 
@@ -450,7 +453,10 @@ export class WidgetRouter {
     }
 }
 
-async function safeReply(interaction: Interaction, content: string): Promise<void> {
+async function safeReply(
+    interaction: Interaction,
+    content: string,
+): Promise<void> {
     try {
         await interaction.editReply({ content });
 
