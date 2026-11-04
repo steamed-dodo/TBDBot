@@ -1,4 +1,5 @@
 export { createInteraction } from './interaction';
+export { INTERACTION_TOKEN_TTL } from './types';
 export type {
     AutocompleteChoice,
     AutocompleteResponseBody,

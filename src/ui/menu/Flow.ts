@@ -397,6 +397,7 @@ export abstract class Flow<
             applicationId: interaction.applicationId,
             token: interaction.token,
             interactionId: interaction.id,
+            expiresAt: interaction.expiresAt,
         };
 
         this.channelId = interaction.channelId;

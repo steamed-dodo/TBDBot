@@ -22,6 +22,7 @@ import type {
     MessageResponseBody,
     ModalResponseBody,
 } from './types';
+import { INTERACTION_TOKEN_TTL } from './types';
 
 export { parsePermissions };
 
@@ -158,6 +159,7 @@ export function createInteraction(
         raw,
         id: raw.id,
         token: raw.token,
+        expiresAt: Date.now() + INTERACTION_TOKEN_TTL,
         applicationId,
         type: raw.type,
         guildId: raw.guild_id ?? null,
