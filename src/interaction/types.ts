@@ -197,6 +197,14 @@ export interface Interaction {
     /** Whether this interaction is an application command invocation. */
     isCommand(): boolean;
 
+    /**
+     * Whether the interaction has been answered.
+     *
+     * An interaction must be acknowledged within three seconds, and the
+     * framework uses this flag to notice a handler that never answered.
+     */
+    readonly responded: boolean;
+
     /** Whether this interaction is a message component interaction. */
     isComponent(): boolean;
 

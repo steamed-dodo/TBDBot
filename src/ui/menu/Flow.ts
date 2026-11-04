@@ -231,9 +231,11 @@ export abstract class Flow<
             return;
         }
 
-        const next = await this.nextState(context.state, action, context);
-
+        // Acknowledge before doing any work: the interaction token is only
+        // valid for three seconds.
         await context.interaction.deferUpdate();
+
+        const next = await this.nextState(context.state, action, context);
 
         if (!next) {
             await context.router.refresh(this.routingId);

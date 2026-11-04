@@ -349,6 +349,47 @@ describe('widget router', () => {
 
             expect(router.stateOf('abc123')).toEqual({ step: 'two' });
         });
+        it('acknowledges an interaction the handler left unanswered', async () => {
+            const widget = createWidget('abc123');
+
+            await router.register(widget);
+
+            await router.handle(
+                asInteraction(createComponentInteraction('ui:abc123:confirm')),
+            );
+
+            const defer = transport.requests.find(
+                (request) =>
+                    request.route ===
+                    '/interactions/{interaction_id}/{interaction_token}/callback',
+            );
+
+            expect(defer).toBeDefined();
+            expect(defer?.body).toMatchObject({ type: 6 });
+        });
+
+        it('does not acknowledge twice', async () => {
+            const widget = createWidget('abc123');
+
+            await router.register({
+                ...widget,
+                async onAction(_action, context) {
+                    await context.interaction.deferUpdate();
+                },
+            });
+
+            await router.handle(
+                asInteraction(createComponentInteraction('ui:abc123:confirm')),
+            );
+
+            const defers = transport.requests.filter(
+                (request) =>
+                    request.route ===
+                    '/interactions/{interaction_id}/{interaction_token}/callback',
+            );
+
+            expect(defers).toHaveLength(1);
+        });
     });
 
     describe('refresh', () => {
