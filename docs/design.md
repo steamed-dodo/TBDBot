@@ -1,6 +1,9 @@
 # Framework Design
 
-Status: **draft, for discussion.** Codename and final package name TBD.
+Status: **draft, for discussion.** Codename: **TBDBot** (a pun on the name
+being TBD). The package will be renamed from `@my-lib/utils` to
+`.../framework` when it is ready to be published; `tbd-bot` and `tbdframework`
+are both available on npm.
 
 This document replaces the earlier `docs/adapter-plan.md`, which proposed a
 `DiscordAdapter` interface with parallel `discord.js` and `@discordjs/core`
@@ -256,19 +259,28 @@ src/
   core/          Client lifecycle, gateway wiring, typed event router
   api/           Thin, typed helpers over core's REST facade
   interaction/   Interaction payload helpers (reply/defer/edit/modal)
+  permissions/   bigint-backed bitfield and permission resolution
   ui/            Widget engine, router, renderers, custom-id minting
     menu/        Menu, Wizard (built on the widget engine)
     panel/       Panel (persistent widget)
-  commands/      Command definitions, registration, middleware, permissions
+    modal/       Modal widgets
+  commands/      Command definitions, registration, middleware, option parsing
   config/        Schema-based, environment-aware configuration
-  cache/         Opt-in cache with pluggable stores
+  cache/         Two-tier cache with pluggable stores
   store/         Persistence backends (memory, JSON file, Redis)
   metrics/       Counters, gauges, histograms, Prometheus exposition
   testing/       Mock client, interaction factories, payload builders
 ```
 
-Single package. The public API is re-exported from `src/index.ts`, with
-subpath exports for the larger modules if the surface grows.
+Single package with one entry point, per decisions 4 and 26. The public API
+is re-exported from `src/index.ts`. Subpath exports (`.../ui`,
+`.../commands`, `.../metrics`) can be added later without breaking the main
+export, so there is no need to design for them now.
+
+`permissions/` is a separate module because it is self-contained and has a
+hard requirement — the `bigint`-backed bitfield — that other modules depend
+on. It is the kind of thing that benefits from being written and tested in
+isolation.
 
 ---
 
@@ -280,7 +292,7 @@ subpath exports for the larger modules if the surface grows.
 | 2 | Public API may break freely | Private, unpublished, single consumer |
 | 3 | No dual-backend adapter layer | One backend; the hard problem (routing) is backend-independent |
 | 4 | Single package | Simplest imports, one build, one `dist` |
-| 5 | Package name stays `@my-lib/utils` for now | Rename when going public; codename TBD |
+| 5 | Package stays `@my-lib/utils` for now, becomes `.../framework` on publish | Codename `TBDBot`; `tbd-bot` and `tbdframework` are free on npm |
 | 6 | Menu and Wizard unify behind one step model | Wizard is a Menu with branching and answer capture |
 | 7 | Menus become dynamic (`render()` instead of static `embed`) | Needed for live/derived content; enables the unified step model |
 | 8 | One exported class for Menu/Wizard; factory added later if it hurts | Class now, factory if ergonomics demand it |
@@ -295,6 +307,14 @@ subpath exports for the larger modules if the surface grows.
 | 17 | Widget routing id is a separate short framework-generated id | Keeps the 100-char `custom_id` budget usable; separates routing identity from the public panel id |
 | 18 | Action payloads are hybrid: reserved prefix for built-in navigation, raw string for user actions | Framework internals stay private without constraining the user's vocabulary |
 | 19 | Cold-start interactions are queued, deferred, and bounded | Preserves the persistent-widget guarantee without an unbounded memory risk |
+| 20 | Two cache tiers: minimal on by default, inclusive opt-in | Permission checks need role and overwrite lookups; everything else is a deliberate cost |
+| 21 | Cache invalidation driven by the event router | Permission inputs each have a corresponding gateway event |
+| 22 | Command option schema derived from the builder; typed resolver provided | The builder retains the full declaration, so no parallel schema is needed |
+| 23 | Components V1 only for now; V2 deferred | V2 changes the message contract; both shapes in one renderer is premature |
+| 24 | Modals are in scope, as widgets | Same routing machinery, different render target |
+| 25 | File attachments deferred | Capability exists in core; not worth carrying until the API settles |
+| 26 | Single package with one entry point for now | Subpath exports can be added without breaking the main export |
+| 27 | Package becomes `.../framework`; codename `TBDBot` | "utils" undersells the scope; the codename is a placeholder until publishing |
 
 ---
 
@@ -538,6 +558,27 @@ Editing a widget's message is a `PATCH` on the channel message, or on the
 interaction webhook for ephemeral responses. The distinction must be tracked
 per widget, because ephemeral messages are not addressable by channel + ID.
 
+**Components V1 only, for now.** The rendering pipeline targets legacy
+messages: `content`, up to 10 `embeds`, and up to 5 action rows of buttons
+and selects. Components V2 (`IS_COMPONENTS_V2`, flag `1 << 15`) allows 40
+total components and replaces `content`/`embeds` with `TextDisplay`,
+`Container`, `Section`, and `MediaGallery` builders.
+
+V2 is explicitly deferred. The builders are available in
+`discord-api-types@0.38.57` and `@discordjs/builders@1.15.0`, so adding
+support later is a matter of widening the renderer's output type and the
+message flags — not a redesign. The reason to defer is that V2 changes the
+message contract (no `content`, no `embeds`), and supporting both shapes
+simultaneously in one renderer is more complexity than it is worth before the
+API has stabilised. Deferring also keeps the widget output type simple
+during the period when it is most likely to change.
+
+**File attachments are deferred** for the same reason. `@discordjs/core`
+supports attachments on both channel messages (`files`) and interaction
+responses (`withFiles`), so the capability is there when it is needed, but
+the rendering pipeline will not carry attachment state until the API is
+stable.
+
 ### Menu and Wizard
 
 One step model for both:
@@ -600,6 +641,106 @@ the hand-rolled per-command `if` ladders.
 Registration should support both global and per-guild commands, with a
 dev/prod distinction, since guild-scoped registration propagates faster.
 
+#### Option parsing
+
+The framework **does** derive an option schema from the command builder, and
+**also** exposes a discord.js-style typed accessor. Both are possible because
+the builder retains enough structure to reconstruct the schema.
+
+`SlashCommandBuilder` and `SharedSlashCommand` expose a readonly `options`
+array of `ToAPIApplicationCommandOptions[]`, which carries the full
+declaration: `type`, `name`, `description`, `required`, `choices`,
+`min_value` / `max_value`, `min_length` / `max_length`, `channel_types`, and
+`autocomplete`. This is the same shape that is sent to Discord when the
+command is registered, so the schema can be derived from it without the
+framework maintaining a parallel description of the command.
+
+The design has two layers:
+
+**A derived schema**, built once at registration time and stored on the
+command definition. It describes each option's type, whether it is required,
+its bounds, and its choices.
+
+**A runtime resolver**, modelled on `discord.js`'s
+`CommandInteractionOptionResolver`, which provides:
+
+```ts
+options.getString('name', required?)
+options.getInteger('name', required?)
+options.getNumber('name', required?)
+options.getBoolean('name', required?)
+options.getUser('name', required?)
+options.getMember('name')
+options.getRole('name', required?)
+options.getChannel('name', required?, channelTypes?)
+options.getMentionable('name', required?)
+options.getAttachment('name', required?)
+options.getSubcommand(required?)
+options.getSubcommandGroup(required?)
+options.getFocused(getFull?)
+```
+
+Each accessor checks the option's runtime type against the expected type and
+throws on a mismatch, and throws when `required` is set and the option is
+absent. This mirrors discord.js's behaviour, which is familiar and does the
+right thing.
+
+Two details worth carrying over from discord.js's implementation:
+
+- **Subcommand hoisting.** The raw options array nests subcommand and
+  subcommand-group options. The resolver must hoist through them so that
+  `getString` looks in the leaf option list, and expose `getSubcommand()` and
+  `getSubcommandGroup()` separately.
+- **Resolved entities.** `options.getUser()` and friends return the
+  *resolved* entities from `interaction.data.resolved`, not just IDs. The
+  resolver should expose `resolved` directly for the cases the typed
+  accessors do not cover.
+
+The resolver is created per interaction and is cheap: it holds the raw
+options array and does linear lookups by name. No schema lookup is needed at
+runtime for the accessors themselves — the type check is against the runtime
+option's own `type` field, which is what makes the mismatch check meaningful.
+
+**Where the derived schema earns its keep.** The accessors work from runtime
+data alone, but the schema enables things the accessors cannot do:
+
+- **Validation before Discord sees it.** Required-ness, bounds, and choice
+  membership can be checked at registration time, so a malformed command
+  fails at boot rather than when a user invokes it.
+- **Typed command arguments.** A command can declare a schema and receive a
+  typed arguments object, rather than a resolver the user has to unwrap. This
+  is the strongest reason to keep the schema, and it is the shape most
+  frameworks converge on.
+- **Autocomplete.** The schema records which options have `autocomplete`
+  enabled, so the autocomplete router can validate that the focused option
+  is one that supports it.
+
+The schema is therefore a first-class part of the command definition, not an
+implementation detail of the resolver.
+
+#### Modals
+
+Modals are **in scope** and are part of the widget model from the start.
+
+A modal is the same idea as a widget, with a different target and a different
+interaction type:
+
+- It is opened in response to an interaction, and its contents are a set of
+  text inputs rather than a rendered message.
+- It is submitted, producing a `MODAL_SUBMIT` interaction, which is routed
+  back to the widget that opened it.
+- The `custom_id` of the modal itself is the routing key.
+
+So the modal is a widget with `renderModal()` instead of `render()`, and the
+router handles the `MODAL_SUBMIT` interaction type. The framework should
+provide a builder helper for constructing modal components, since
+`TextInputBuilder` must live inside a `Label` (or an action row) and getting
+that nesting right is fiddly.
+
+Because modals are widgets, they inherit the same routing machinery — the
+same `custom_id` scheme, the same action dispatch — which is a good reason to
+get the widget engine right before building them.
+
 ### Config
 
 Schema-based, environment-aware, and validated once at startup. Fail loudly
@@ -613,13 +754,76 @@ in the current testbot config with something reusable, and it should support:
 
 ### Caching
 
-Opt-in, with pluggable stores. The framework provides the cache *interface*
-and a memory implementation; a Redis implementation is a natural extension and
-the user's other bots already run Redis.
+Two tiers, both with pluggable stores. The tiering exists because the two use
+cases have genuinely different requirements, and conflating them would either
+under-serve permission checks or over-serve a bot that only wants to look up
+a username.
 
-The cache should be bounded and explicit about what it holds. The point of
-moving to core is that memory is spent deliberately. A cache that silently
-accumulates guild members would undo the entire benefit.
+**Tier 1 — minimal, on by default.** Holds only what is needed to avoid
+routine rate-limit pressure:
+
+- Guild roles (`GET /guilds/{id}/roles`) — needed to resolve a member's
+  effective permissions.
+- Channel permission overwrites (`GET /channels/{id}`) — needed for the same
+  calculation.
+
+These are the two lookups that permission checks require, and they are
+bounded: a guild has tens of roles and a channel has a handful of overwrites.
+This tier is small enough to keep on by default without undermining the
+memory win.
+
+**Tier 2 — opt-in, inclusive.** Adds the caches a bot may want for
+convenience or features:
+
+- Guilds, channels, members, users.
+- Message content, if the bot needs to read history.
+
+This tier is where the memory cost lives, so it is never enabled implicitly.
+The user chooses what goes in it.
+
+**Invalidation.** The event router's typed events drive cache invalidation
+directly, which is the natural consequence of building the event layer:
+
+| Event | Invalidates |
+|---|---|
+| `GUILD_ROLES_UPDATE` | That guild's roles |
+| `GUILD_UPDATE` | That guild |
+| `CHANNEL_UPDATE` | That channel's overwrites |
+| `GUILD_MEMBER_UPDATE` | That member |
+| `GUILD_MEMBERS_CHUNK` | That member |
+
+This is the answer to the permission-resolution question. Effective
+permissions depend on guild roles, member roles, and channel overwrites, and
+each of those has a corresponding gateway event. Cache invalidation is
+therefore not a special mechanism — it is a few lines of event handlers.
+
+**Resolution algorithm.** To compute a member's effective permissions in a
+channel:
+
+1. Start with `@everyone`'s permissions from the guild's role list.
+2. Add the permissions of every role the member holds.
+3. Apply channel overwrites: `@everyone` overwrite, then the union of role
+   overwrites for the member's roles, then the member-specific overwrite.
+   Denies always win over allows, and role overwrites are unioned before the
+   member overwrite is applied.
+
+The interaction payload already contains `member.roles` and
+`app_permissions`, so the member's role list is usually available without a
+fetch. The guild's role *definitions* and the channel's overwrites are the
+two things that need caching.
+
+**Note on permission values.** As established earlier, Discord v10 returns
+permission bitfields as **strings**, and 64-bit permission values exceed
+`Number.MAX_SAFE_INTEGER`. The framework's own bitfield type must therefore
+be `bigint`-backed, and all parsing of permission values from payloads must
+go through `BigInt(...)`. This applies to `APIRole.permissions`,
+`APIGuildMember.permissions`, `interaction.member.permissions`,
+`interaction.app_permissions`, and `APIOverwrite.allow` / `.deny`.
+
+**Stores.** Both tiers use the same `Store` interface as
+[Stores](#stores) — memory, JSON file, Redis — so a user can run a shared
+cache across pods if they want. A cache entry is keyed by kind and id, e.g.
+`roles:{guildId}`, `channel:{channelId}`.
 
 ### Stores
 
@@ -676,66 +880,62 @@ inputs as plain data.
 
 Ordered by dependency and by risk. The widget engine is deliberately early:
 it is the piece most likely to be wrong, and everything else builds on it.
+The permission module is early for a different reason — it is self-contained,
+has a hard `bigint` requirement, and is needed by the command middleware.
 
 1. **Foundation** — package scaffolding on core, `core` client wrapper, typed
    event router, REST helpers, interaction helpers.
-2. **Widget engine** — widget interface, router, routing-id generation,
+2. **Permissions** — `bigint`-backed bitfield, role/overwrite resolution.
+   Self-contained and independently testable.
+3. **Widget engine** — widget interface, router, routing-id generation,
    custom-id minting and parsing, action splitting, rendering pipeline,
    message editing for both channel and ephemeral targets, cold-start queue.
    Full test coverage.
-3. **Menu / Wizard** — rebuilt on the widget engine, with the dynamic step
+4. **Menu / Wizard** — rebuilt on the widget engine, with the dynamic step
    model.
-4. **Panel** — persistent widgets, store interface and implementations,
+5. **Panel** — persistent widgets, store interface and implementations,
    registry, restoration.
-5. **Commands + middleware** — definitions, registration, permission and
-   cooldown middleware, error handling.
-6. **Config** — schema, loading, validation, redaction.
-7. **Cache** — interface, memory implementation, policy helpers.
-8. **Metrics** — registry, Prometheus exposition, handler and optional server.
-9. **Stores** — Redis implementation, command-cooldown store.
-10. **Testing utilities** — mock client, payload factories, exported for
+6. **Commands + middleware** — definitions, registration, option schema
+   derivation and typed resolver, permission and cooldown middleware, error
+   handling.
+7. **Cache** — two tiers, store interface, memory implementation, event-driven
+   invalidation.
+8. **Config** — schema, loading, validation, redaction.
+9. **Metrics** — registry, Prometheus exposition, handler and optional server.
+10. **Modals** — modal widgets, `MODAL_SUBMIT` routing, builder helpers.
+11. **Stores** — Redis implementation, command-cooldown store.
+12. **Testing utilities** — mock client, payload factories, exported for
     consumers.
 
-Steps 6, 7, and 8 are independent of the others and can land in any order.
+Steps 7, 8, and 9 are independent of the others and can land in any order.
+Step 10 depends on the widget engine being right, which is why it sits after
+the menu and panel work has validated the model.
 
 ---
 
 ## Open questions
 
-Questions 1–3 were resolved during design and are now settled in
-[Decisions](#decisions) and the corresponding sections above. The remainder
-are still open and worth settling before the relevant module is built.
+All of the previously open questions are now resolved and folded into the
+design above. Two follow-ups remain, neither of which blocks the foundation
+work:
 
-1. **Permission resolution and caching interaction.** Resolving effective
-   permissions needs guild roles, member roles, and channel overwrites — up
-   to three REST calls. How aggressively should the cache hold these, and who
-   invalidates on role updates? A `GUILD_MEMBER_UPDATE` /
-   `GUILD_ROLES_UPDATE` driven invalidation hook seems necessary.
+1. **Cache TTLs and bounds.** The two cache tiers are defined, but the
+   specific TTL for each entry kind, and the eviction policy when the
+   inclusive tier is enabled, have not been chosen. Memory is the point of
+   the exercise, so these need real numbers rather than a default.
 
-2. **Command argument parsing.** Should the framework parse and type command
-   options into a typed object, or pass the raw option array through and let
-   the user parse? Typed parsing is much nicer but requires a schema
-   convention, and Discord's option model is awkward for subcommand trees.
+2. **Typed command arguments.** The option schema is derived from the builder
+   and the typed resolver is settled, but whether commands receive a
+   fully-typed arguments object (derived from the schema at the type level)
+   or a runtime-validated one is still open. The former is a significant
+   TypeScript exercise involving conditional types over the option tree.
 
-3. **Component V2 support.** `discord-api-types@0.38.57` and
-   `@discordjs/builders@1.15.0` include the V2 builders (`Container`,
-   `Section`, `TextDisplay`, `MediaGallery`). Should the widget rendering
-   pipeline support V2 output from the start, or only legacy embeds and
-   action rows initially?
+Smaller items that can be settled as they are encountered:
 
-4. **Modals in scope?** Modals are a distinct interaction type with their own
-   routing and a `ModalSubmit` payload. They are not mentioned in the
-   current library, but they are common in real bots. Include them in the
-   widget model now, or defer?
-
-5. **File attachments.** `core` supports `withFiles` for interactions and
-   `files` on channel messages. Does the framework expose an attachment
-   helper, and does the widget rendering pipeline support them?
-
-6. **Name and scope.** `@my-lib/utils` is a placeholder. The final name
-   should reflect that this is a bot framework rather than a utility
-   collection.
-
-7. **Subpath exports.** If the package grows, should `ui`, `commands`, and
-   `metrics` be separately importable (`@my-lib/x/ui`) to keep bundle size
-   down for consumers who only want part of it?
+- Whether the `Store` interface needs TTL and CAS semantics, or whether
+  those belong to the cache layer on top of it.
+- The exact shape of the `metrics.handler()` response, and whether it should
+  serve anything beyond `/metrics` (a health check, for instance).
+- Whether the framework should offer a `SlashCommandBuilder` variant that
+  takes a typed schema directly, rather than deriving the schema from a
+  hand-written builder.
