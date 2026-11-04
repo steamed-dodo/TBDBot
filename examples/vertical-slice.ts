@@ -115,8 +115,8 @@ commands.add({
 
         await router.register(
             counter,
-            { kind: 'channel', channelId, messageId: sent.id },
             0,
+            { kind: 'channel', channelId, messageId: sent.id },
         );
 
         await interaction.editReply({ content: 'Look below.' });

@@ -10,6 +10,7 @@ import {
     assertValidNamespace,
     createCustomId,
     createReservedAction,
+    createReservedCustomId,
     generateRoutingId,
     isReservedAction,
     parseCustomId,
@@ -123,5 +124,39 @@ describe('namespaces', () => {
     it('refuses to let a user take a reserved namespace', () => {
         expect(() => assertUserNamespace('ui')).toThrow(TypeError);
         expect(() => assertUserNamespace('app')).not.toThrow();
+    });
+
+    describe('defects found in the second pass', () => {
+        it('refuses to mint a custom id for a user action carrying the marker', () => {
+            expect(() => createCustomId('ui', 'widget1', '~spoofed')).toThrow(
+                TypeError,
+            );
+        });
+
+        it('mints a reserved custom id through the reserved path', () => {
+            expect(createReservedCustomId('ui', 'widget1', 'next')).toBe(
+                'ui:widget1:~next',
+            );
+            expect(
+                createReservedCustomId('ui', 'widget1', 'choice', 'ts'),
+            ).toBe('ui:widget1:~choice:ts');
+        });
+
+        it('refuses a reserved payload carrying the marker', () => {
+            expect(() =>
+                createReservedCustomId('ui', 'widget1', 'choice', '~x'),
+            ).toThrow(TypeError);
+        });
+
+        it('rejects a reserved custom id longer than the limit', () => {
+            expect(() =>
+                createReservedCustomId(
+                    'ui',
+                    'widget1',
+                    'choice',
+                    'a'.repeat(MAX_CUSTOM_ID_LENGTH),
+                ),
+            ).toThrow(RangeError);
+        });
     });
 });

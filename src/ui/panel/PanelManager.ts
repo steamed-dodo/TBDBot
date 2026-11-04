@@ -149,15 +149,11 @@ export class PanelManager {
 
         this.panels.set(panel.id, panel as PersistentWidget<unknown>);
 
-        await this.router.register(
-            panel as WidgetOf<S>,
-            {
-                kind: 'channel',
-                channelId,
-                messageId: created.id,
-            },
-            state,
-        );
+        await this.router.register(panel as WidgetOf<S>, state, {
+            kind: 'channel',
+            channelId,
+            messageId: created.id,
+        });
 
         await panel.onCreate?.();
 
@@ -276,12 +272,12 @@ export class PanelManager {
 
         await this.router.register(
             panel as WidgetOf<unknown>,
+            panel.restore(record.data),
             {
                 kind: 'channel',
                 channelId: record.channelId,
                 messageId: record.messageId,
             },
-            panel.restore(record.data),
         );
 
         await panel.onLoad?.();

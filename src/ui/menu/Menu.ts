@@ -1,3 +1,5 @@
+import { ButtonStyle } from 'discord-api-types/v10';
+
 import { createReservedAction } from '../ids';
 import { navigationSelect } from '../render';
 import type { ActionContext, ComponentRow } from '../types';
@@ -110,13 +112,17 @@ export class Menu extends Flow<FlowState> {
                 {
                     type: 'button',
                     action: createReservedAction('previous'),
+                    reserved: true,
                     label: 'Previous',
+                    style: ButtonStyle.Secondary,
                     disabled: isFirst,
                 },
                 {
                     type: 'button',
                     action: createReservedAction('next'),
+                    reserved: true,
                     label: 'Next',
+                    style: ButtonStyle.Secondary,
                     disabled: isLast,
                 },
             ]);

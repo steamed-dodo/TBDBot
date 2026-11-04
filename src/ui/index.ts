@@ -39,6 +39,7 @@ export {
 } from './router';
 export type { RegisteredWidget, WidgetRouterOptions } from './router';
 export type {
+    AccessPolicy,
     ActionContext,
     ButtonSpec,
     ComponentButtonStyle,

@@ -62,7 +62,7 @@ describe('widget router', () => {
 
     it('dispatches a user action to the widget', async () => {
         const widget = createWidget('abc123');
-        await router.register(widget);
+        await router.register(widget, undefined);
 
         const handled = await router.handle(
             asInteraction(createComponentInteraction('ui:abc123:confirm')),
@@ -75,7 +75,7 @@ describe('widget router', () => {
 
     it('dispatches reserved actions to the navigation handler', async () => {
         const widget = createWidget('abc123');
-        await router.register(widget);
+        await router.register(widget, undefined);
 
         await router.handle(
             asInteraction(createComponentInteraction('ui:abc123:~next')),
@@ -87,7 +87,7 @@ describe('widget router', () => {
 
     it('ignores interactions that do not belong to the namespace', async () => {
         const widget = createWidget('abc123');
-        await router.register(widget);
+        await router.register(widget, undefined);
 
         const handled = await router.handle(
             asInteraction(createComponentInteraction('other:abc123:confirm')),
@@ -98,7 +98,7 @@ describe('widget router', () => {
 
     it('ignores custom ids that are not framework minted', async () => {
         const widget = createWidget('abc123');
-        await router.register(widget);
+        await router.register(widget, undefined);
 
         const handled = await router.handle(
             asInteraction(createComponentInteraction('confirm')),
@@ -161,7 +161,7 @@ describe('widget router', () => {
             );
 
             const widget = createWidget('abc123');
-            await router.register(widget);
+            await router.register(widget, undefined);
 
             expect(widget.actions).toEqual(['confirm']);
             expect(router.pendingCount).toBe(0);
@@ -187,7 +187,7 @@ describe('widget router', () => {
             expect(bounded.pendingCount).toBe(2);
 
             const widget = createWidget('abc123');
-            await bounded.register(widget);
+            await bounded.register(widget, undefined);
 
             expect(widget.actions).toEqual(['second', 'third']);
         });
@@ -239,7 +239,7 @@ describe('widget router', () => {
             );
 
             const widget = createWidget('abc123');
-            await bounded.register(widget);
+            await bounded.register(widget, undefined);
 
             expect(widget.actions).toEqual([]);
         });
@@ -259,12 +259,12 @@ describe('widget router', () => {
                         return { content: state };
                     },
                 },
+                'first',
                 {
                     kind: 'channel',
                     channelId: 'channel-1',
                     messageId: 'message-1',
                 },
-                'first',
             );
 
             await router.refresh('abc123');
@@ -283,7 +283,6 @@ describe('widget router', () => {
                         content: String(state.count),
                     }),
                 },
-                null,
                 { count: 1 },
             );
 
@@ -295,7 +294,7 @@ describe('widget router', () => {
         it('exposes the state of a widget', async () => {
             const widget = createWidget('abc123');
 
-            await router.register(widget, null, { step: 'one' });
+            await router.register(widget, { step: 'one' });
 
             expect(router.stateOf('abc123')).toEqual({ step: 'one' });
             expect(router.stateOf('missing')).toBeUndefined();
@@ -318,7 +317,6 @@ describe('widget router', () => {
                         received = context.state;
                     },
                 },
-                null,
                 { step: 'one' },
             );
 
@@ -339,7 +337,6 @@ describe('widget router', () => {
                         await context.update({ step: 'two' });
                     },
                 },
-                null,
                 { step: 'one' },
             );
 
@@ -352,7 +349,7 @@ describe('widget router', () => {
         it('acknowledges an interaction the handler left unanswered', async () => {
             const widget = createWidget('abc123');
 
-            await router.register(widget);
+            await router.register(widget, undefined);
 
             await router.handle(
                 asInteraction(createComponentInteraction('ui:abc123:confirm')),
@@ -371,12 +368,15 @@ describe('widget router', () => {
         it('does not acknowledge twice', async () => {
             const widget = createWidget('abc123');
 
-            await router.register({
-                ...widget,
-                async onAction(_action, context) {
-                    await context.interaction.deferUpdate();
+            await router.register(
+                {
+                    ...widget,
+                    async onAction(_action, context) {
+                        await context.interaction.deferUpdate();
+                    },
                 },
-            });
+                undefined,
+            );
 
             await router.handle(
                 asInteraction(createComponentInteraction('ui:abc123:confirm')),
@@ -390,13 +390,66 @@ describe('widget router', () => {
 
             expect(defers).toHaveLength(1);
         });
+
+        it('acknowledges before a slow handler finishes', async () => {
+            const quick = new WidgetRouter(api, { acknowledgeAfter: 5 });
+            const widget = createWidget('abc123');
+            let respondedDuringHandler = false;
+
+            await quick.register(
+                {
+                    ...widget,
+                    async onAction(_action, context) {
+                        // Longer than the acknowledgement deadline.
+                        await new Promise((resolve) => setTimeout(resolve, 30));
+
+                        respondedDuringHandler = context.interaction.responded;
+                    },
+                },
+                undefined,
+            );
+
+            await quick.handle(
+                asInteraction(createComponentInteraction('ui:abc123:confirm')),
+            );
+
+            expect(respondedDuringHandler).toBe(true);
+            expect(transport.requests).toHaveLength(1);
+        });
+
+        it('leaves a handler that answers itself alone', async () => {
+            const quick = new WidgetRouter(api, { acknowledgeAfter: 5 });
+            const widget = createWidget('abc123');
+            let respondedDuringHandler = false;
+
+            await quick.register(
+                {
+                    ...widget,
+                    async onAction(_action, context) {
+                        await context.interaction.deferUpdate();
+
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+
+                        respondedDuringHandler = true;
+                    },
+                },
+                undefined,
+            );
+
+            await quick.handle(
+                asInteraction(createComponentInteraction('ui:abc123:confirm')),
+            );
+
+            expect(respondedDuringHandler).toBe(true);
+            expect(transport.requests).toHaveLength(1);
+        });
     });
 
     describe('refresh', () => {
         it('re-renders a widget and edits its message', async () => {
             const widget = createWidget('abc123');
 
-            await router.register(widget, {
+            await router.register(widget, undefined, {
                 kind: 'channel',
                 channelId: 'channel-1',
                 messageId: 'message-1',
@@ -414,7 +467,7 @@ describe('widget router', () => {
 
         it('does nothing when the widget has no message', async () => {
             const widget = createWidget('abc123');
-            await router.register(widget);
+            await router.register(widget, undefined);
 
             await router.refresh('abc123');
 

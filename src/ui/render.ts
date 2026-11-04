@@ -7,13 +7,16 @@ import type {
     APIStringSelectComponent,
     MessageFlags,
 } from 'discord-api-types/v10';
-import { ComponentType } from 'discord-api-types/v10';
+import { ComponentType, ButtonStyle } from 'discord-api-types/v10';
 
 import {
+    CUSTOM_ID_SEPARATOR,
+    RESERVED_ACTION_PREFIX,
+    RESERVED_ACTIONS,
+    assertValidAction,
     createCustomId,
     createReservedAction,
-    MAX_CUSTOM_ID_LENGTH,
-    assertValidAction,
+    createReservedCustomId,
 } from './ids';
 import type { ReservedAction } from './ids';
 import type {
@@ -111,7 +114,7 @@ export function button(
         type: 'button',
         action,
         label,
-        ...(options.style === undefined ? {} : { style: options.style }),
+        style: options.style ?? ButtonStyle.Primary,
         ...(options.emoji === undefined ? {} : { emoji: options.emoji }),
         ...(options.disabled === undefined
             ? {}
@@ -211,6 +214,7 @@ export function navigationSelect(
     return {
         type: 'select',
         action: createReservedAction(action),
+        reserved: true,
         options: options.map((option) => ({
             label: option.label,
             value: option.value,
@@ -358,22 +362,16 @@ function renderButton(
     namespace: string,
     widgetId: string,
 ): APIButtonComponent {
-    const customId = createCustomId(namespace, widgetId, spec.action);
-
-    if (customId.length > MAX_CUSTOM_ID_LENGTH) {
-        throw new RangeError(
-            `Custom id is ${customId.length} characters long, which exceeds the ${MAX_CUSTOM_ID_LENGTH} character limit.`,
-        );
-    }
+    const customId = componentCustomId(spec, namespace, widgetId);
 
     return {
         type: ComponentType.Button,
         custom_id: customId,
         label: spec.label,
-        ...(spec.style === undefined ? {} : { style: spec.style }),
+        style: spec.style,
         ...(spec.emoji === undefined ? {} : { emoji: toEmoji(spec.emoji) }),
         ...(spec.disabled === undefined ? {} : { disabled: spec.disabled }),
-    } as APIButtonComponent;
+    };
 }
 
 function renderSelect(
@@ -381,7 +379,7 @@ function renderSelect(
     namespace: string,
     widgetId: string,
 ): APIStringSelectComponent {
-    const customId = createCustomId(namespace, widgetId, spec.action);
+    const customId = componentCustomId(spec, namespace, widgetId);
 
     return {
         type: ComponentType.StringSelect,
@@ -403,7 +401,40 @@ function renderSelect(
             ? {}
             : { placeholder: spec.placeholder }),
         ...(spec.disabled === undefined ? {} : { disabled: spec.disabled }),
-    } as APIStringSelectComponent;
+    };
+}
+
+/**
+ * Mints the custom id of a component.
+ *
+ * A user action goes through the strict path, which rejects the reserved
+ * marker, so a hand-built specification cannot impersonate the framework's
+ * navigation. A reserved action goes through the reserved path, which
+ * accepts only the framework's own action names.
+ */
+function componentCustomId(
+    spec: { readonly action: string; readonly reserved?: boolean },
+    namespace: string,
+    widgetId: string,
+): string {
+    if (spec.reserved) {
+        const [name, ...rest] = spec.action
+            .slice(RESERVED_ACTION_PREFIX.length)
+            .split(CUSTOM_ID_SEPARATOR);
+
+        if (!(RESERVED_ACTIONS as readonly string[]).includes(name ?? '')) {
+            throw new TypeError(`Unknown reserved action: "${spec.action}".`);
+        }
+
+        return createReservedCustomId(
+            namespace,
+            widgetId,
+            name as ReservedAction,
+            rest.length > 0 ? rest.join(CUSTOM_ID_SEPARATOR) : undefined,
+        );
+    }
+
+    return createCustomId(namespace, widgetId, spec.action);
 }
 
 function toEmoji(emoji: EmojiSpec): APIMessageComponentEmoji {

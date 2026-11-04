@@ -126,7 +126,7 @@ describe('menu', () => {
             access: { type: 'everyone' },
         });
 
-        await router.register(menu, null, menu.initialState());
+        await router.register(menu, menu.initialState());
 
         await router.handle(
             createInteraction(
@@ -146,7 +146,7 @@ describe('menu', () => {
             access: { type: 'everyone' },
         });
 
-        await router.register(menu, null, menu.initialState());
+        await router.register(menu, menu.initialState());
 
         await router.handle(
             createInteraction(
@@ -194,7 +194,7 @@ describe('menu', () => {
             access: { type: 'caller-only' },
         });
 
-        await router.register(menu, null, menu.initialState());
+        await router.register(menu, menu.initialState());
 
         await router.handle(
             createInteraction(
@@ -211,6 +211,79 @@ describe('menu', () => {
                 request.url.includes('/callback'),
             ),
         ).toBe(true);
+    });
+
+    it('applies the access policy to custom step actions', async () => {
+        const handled: string[] = [];
+        const steps: readonly Step[] = [
+            {
+                id: 'one',
+                render: () => ({ content: 'first' }),
+                onAction(action) {
+                    handled.push(action);
+                },
+            },
+        ];
+
+        const menu = new Menu({
+            api,
+            steps,
+            routingId: 'menu123',
+            userId: 'owner-1',
+            access: { type: 'caller-only' },
+        });
+
+        await router.register(menu, menu.initialState());
+
+        await router.handle(
+            createInteraction(
+                createComponentInteraction('ui:menu123:mutate', {
+                    userId: 'intruder-1',
+                }),
+                api.interactions,
+            ),
+        );
+
+        expect(handled).toEqual([]);
+        expect(
+            transport.requests.some((request) =>
+                request.url.includes('/callback'),
+            ),
+        ).toBe(true);
+    });
+
+    it('allows the owner to use a custom step action', async () => {
+        const handled: string[] = [];
+        const steps: readonly Step[] = [
+            {
+                id: 'one',
+                render: () => ({ content: 'first' }),
+                onAction(action) {
+                    handled.push(action);
+                },
+            },
+        ];
+
+        const menu = new Menu({
+            api,
+            steps,
+            routingId: 'menu123',
+            userId: 'owner-1',
+            access: { type: 'caller-only' },
+        });
+
+        await router.register(menu, menu.initialState());
+
+        await router.handle(
+            createInteraction(
+                createComponentInteraction('ui:menu123:mutate', {
+                    userId: 'owner-1',
+                }),
+                api.interactions,
+            ),
+        );
+
+        expect(handled).toEqual(['mutate']);
     });
 });
 
@@ -266,7 +339,7 @@ describe('wizard', () => {
             access: { type: 'everyone' },
         });
 
-        await router.register(wizard, null, wizard.initialState());
+        await router.register(wizard, wizard.initialState());
 
         await router.handle(
             createInteraction(
@@ -287,7 +360,7 @@ describe('wizard', () => {
             access: { type: 'everyone' },
         });
 
-        await router.register(wizard, null, wizard.initialState());
+        await router.register(wizard, wizard.initialState());
 
         await router.handle(
             createInteraction(
@@ -314,7 +387,7 @@ describe('wizard', () => {
             access: { type: 'everyone' },
         });
 
-        await router.register(wizard, null, wizard.initialState());
+        await router.register(wizard, wizard.initialState());
 
         await router.handle(
             createInteraction(
@@ -349,7 +422,7 @@ describe('wizard', () => {
             },
         });
 
-        await router.register(wizard, null, wizard.initialState());
+        await router.register(wizard, wizard.initialState());
 
         await router.handle(
             createInteraction(

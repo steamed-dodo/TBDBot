@@ -11,7 +11,7 @@ import {
 import type { MessageTarget } from './messages';
 import { editTarget } from './messages';
 import { renderContent } from './render';
-import type { ActionContext, Widget } from './types';
+import type { AccessPolicy, ActionContext, Widget } from './types';
 
 /** Interaction tokens are valid for 15 minutes. */
 export const DEFAULT_QUEUE_TTL = 15 * 60 * 1000;
@@ -21,6 +21,19 @@ export const DEFAULT_MAX_QUEUED_PER_WIDGET = 25;
 
 /** Maximum number of queued interactions kept across all widgets. */
 export const DEFAULT_MAX_QUEUED_TOTAL = 500;
+
+/**
+ * How long the framework waits before acknowledging on a handler's behalf.
+ *
+ * An interaction must be answered within three seconds, and a handler that
+ * takes longer than that would fail with no explanation. The router
+ * therefore acknowledges the interaction itself if the handler has not
+ * answered by then.
+ *
+ * A handler that answers quickly — including one that opens a modal, which
+ * cannot follow a deferral — is never affected.
+ */
+export const ACKNOWLEDGE_AFTER = 2500;
 
 /** Configuration options used to construct a {@link WidgetRouter}. */
 export interface WidgetRouterOptions {
@@ -51,6 +64,14 @@ export interface WidgetRouterOptions {
      * @defaultValue 900000 (15 minutes)
      */
     readonly queueTtl?: number;
+
+    /**
+     * How long the router waits before acknowledging an interaction on a
+     * handler's behalf, in milliseconds.
+     *
+     * @defaultValue 2500
+     */
+    readonly acknowledgeAfter?: number;
 }
 
 /**
@@ -100,6 +121,8 @@ export class WidgetRouter {
 
     private readonly queueTtl: number;
 
+    private readonly acknowledgeAfter: number;
+
     /**
      * @param api - The REST facade used to update widget messages.
      * @param options - Router configuration.
@@ -114,6 +137,7 @@ export class WidgetRouter {
         this.maxQueuedTotal =
             options.maxQueuedTotal ?? DEFAULT_MAX_QUEUED_TOTAL;
         this.queueTtl = options.queueTtl ?? DEFAULT_QUEUE_TTL;
+        this.acknowledgeAfter = options.acknowledgeAfter ?? ACKNOWLEDGE_AFTER;
     }
 
     /** Namespace used for the framework-minted custom ids. */
@@ -133,17 +157,17 @@ export class WidgetRouter {
      * restored are drained as part of the registration.
      *
      * @param widget - The widget to register.
+     * @param state - The state the widget holds.
      * @param target - Where the widget's message lives, when it has been sent.
-     * @param state - The initial state of the widget.
      */
     public async register<S>(
         widget: Widget<S>,
+        state: S,
         target: MessageTarget | null = null,
-        state: S | undefined = undefined,
     ): Promise<void> {
         this.widgets.set(widget.routingId, {
             widget,
-            state: state as S,
+            state,
             target,
         });
 
@@ -372,6 +396,28 @@ export class WidgetRouter {
         action: string,
         interaction: Interaction,
     ): Promise<void> {
+        // The access policy covers every action, the framework's own
+        // navigation and the widget's custom actions alike.
+        if (
+            registration.widget.access &&
+            !(await isAllowed(registration.widget.access, interaction))
+        ) {
+            await denyAccess(interaction);
+
+            return;
+        }
+
+        // Acknowledge before the deadline: the interaction token is only
+        // valid for three seconds, and the handler may take longer than
+        // that. A handler that answers itself is unaffected, and one that
+        // opens a modal — which cannot follow a deferral — is not touched
+        // either, because it answers long before the deadline.
+        const timer = setTimeout(() => {
+            void acknowledgeIfNeeded(interaction);
+        }, this.acknowledgeAfter);
+
+        timer.unref?.();
+
         const context = {
             widget: registration.widget,
             interaction,
@@ -402,6 +448,8 @@ export class WidgetRouter {
             );
 
             throw error;
+        } finally {
+            clearTimeout(timer);
         }
 
         await acknowledgeIfNeeded(interaction);
@@ -504,6 +552,48 @@ export class WidgetRouter {
                 this.queues.delete(key);
             }
         }
+    }
+}
+
+/**
+ * Checks whether an interaction is allowed to drive a widget.
+ *
+ * @param policy - The widget's access policy.
+ * @param interaction - The interaction.
+ * @returns `true` when the interaction is allowed.
+ */
+async function isAllowed(
+    policy: AccessPolicy,
+    interaction: Interaction,
+): Promise<boolean> {
+    switch (policy.type) {
+        case 'everyone':
+            return true;
+        case 'caller-only':
+            return (
+                policy.userId === undefined ||
+                interaction.userId === policy.userId
+            );
+        case 'custom':
+            return (await policy.filter(interaction)) === true;
+        default:
+            return true;
+    }
+}
+
+/**
+ * Answers an interaction that is not allowed to drive a widget.
+ *
+ * @param interaction - The interaction.
+ */
+async function denyAccess(interaction: Interaction): Promise<void> {
+    try {
+        await interaction.reply({
+            content: 'You are not allowed to use this widget.',
+            flags: MessageFlags.Ephemeral,
+        });
+    } catch {
+        // The interaction may already have been answered.
     }
 }
 

@@ -2,7 +2,12 @@ import type { EmbedBuilder } from '@discordjs/builders';
 import type { API } from '@discordjs/core';
 
 import type { Interaction } from '../../interaction/types';
-import type { ComponentButtonStyle, ComponentRow, EmojiSpec } from '../types';
+import type {
+    AccessPolicy,
+    ComponentButtonStyle,
+    ComponentRow,
+    EmojiSpec,
+} from '../types';
 import type { Flow } from './Flow';
 
 /**
@@ -129,19 +134,10 @@ export interface FlowState {
 /**
  * Controls which users may interact with a flow.
  *
- * - `caller-only`: Only the user who owns the flow may interact.
- * - `everyone`: Any user may interact.
- * - `custom`: Access is determined by a user-provided filter.
+ * This is the same policy the router applies to every widget; the flow
+ * fills in its owner when the policy is `caller-only`.
  */
-export type MenuAccess =
-    | { readonly type: 'caller-only' }
-    | { readonly type: 'everyone' }
-    | {
-          readonly type: 'custom';
-          readonly filter: (
-              interaction: Interaction,
-          ) => boolean | Promise<boolean>;
-      };
+export type MenuAccess = AccessPolicy;
 
 /**
  * Configuration shared by every flow.

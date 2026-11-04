@@ -40,11 +40,17 @@ export const ROUTING_ID_LENGTH = 10;
 /**
  * Navigation actions reserved by the framework.
  *
- * These are the action names the framework itself emits. A widget may
- * define additional reserved-style actions, but the built-in set is the
- * contract the framework documents.
+ * These are the action names the framework itself emits. The set is closed:
+ * an action outside it is a user action, and a user action may never enter
+ * the reserved namespace.
  */
-export const RESERVED_ACTIONS = ['next', 'previous', 'back', 'select'] as const;
+export const RESERVED_ACTIONS = [
+    'next',
+    'previous',
+    'back',
+    'select',
+    'choice',
+] as const;
 
 /** A reserved navigation action. */
 export type ReservedAction = (typeof RESERVED_ACTIONS)[number];
@@ -154,9 +160,14 @@ export function assertUserNamespace(namespace: string): void {
 /**
  * Builds a framework-minted custom id.
  *
+ * The action must be a **user** action: it may not contain the reserved
+ * marker. A component that wants a reserved action uses
+ * {@link createReservedCustomId} instead, so a hand-built specification
+ * cannot impersonate the framework's navigation.
+ *
  * @param namespace - Namespace the component belongs to.
  * @param widgetId - Routing id of the owning widget.
- * @param action - Action segment, without the reserved marker.
+ * @param action - User-defined action segment.
  * @returns The custom id to send to Discord.
  * @throws {RangeError} If the resulting custom id exceeds Discord's limit.
  */
@@ -177,6 +188,54 @@ export function createCustomId(
         );
     }
 
+    assertValidAction(action);
+
+    return buildCustomId(namespace, widgetId, action);
+}
+
+/**
+ * Builds a framework-minted custom id for a reserved action.
+ *
+ * This is the only path that may produce a custom id whose action segment
+ * carries the reserved marker.
+ *
+ * @param namespace - Namespace the component belongs to.
+ * @param widgetId - Routing id of the owning widget.
+ * @param action - The reserved action.
+ * @param payload - Optional payload carried by the action.
+ * @returns The custom id to send to Discord.
+ * @throws {RangeError} If the resulting custom id exceeds Discord's limit.
+ */
+export function createReservedCustomId(
+    namespace: string,
+    widgetId: string,
+    action: ReservedAction,
+    payload?: string,
+): string {
+    assertValidNamespace(namespace);
+
+    if (typeof widgetId !== 'string' || widgetId.length === 0) {
+        throw new TypeError('Widget id must be a non-empty string.');
+    }
+
+    if (widgetId.includes(CUSTOM_ID_SEPARATOR)) {
+        throw new TypeError(
+            `Widget id must not contain "${CUSTOM_ID_SEPARATOR}": "${widgetId}".`,
+        );
+    }
+
+    return buildCustomId(
+        namespace,
+        widgetId,
+        createReservedAction(action, payload),
+    );
+}
+
+function buildCustomId(
+    namespace: string,
+    widgetId: string,
+    action: string,
+): string {
     const customId = `${namespace}${CUSTOM_ID_SEPARATOR}${widgetId}${CUSTOM_ID_SEPARATOR}${action}`;
 
     if (customId.length > MAX_CUSTOM_ID_LENGTH) {
@@ -263,8 +322,21 @@ export function splitAction(action: string): {
  * Builds the action segment for a reserved navigation action.
  *
  * @param action - The reserved navigation action.
+ * @param payload - Optional payload carried by the action.
  * @returns The action segment, including the reserved marker.
+ * @throws {TypeError} If the payload contains the reserved marker.
  */
-export function createReservedAction(action: ReservedAction): string {
-    return `${RESERVED_ACTION_PREFIX}${action}`;
+export function createReservedAction(
+    action: ReservedAction,
+    payload?: string,
+): string {
+    const base = `${RESERVED_ACTION_PREFIX}${action}`;
+
+    if (payload === undefined) {
+        return base;
+    }
+
+    assertValidAction(payload);
+
+    return `${base}:${payload}`;
 }
