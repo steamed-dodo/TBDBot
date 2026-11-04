@@ -2,6 +2,10 @@ import { GatewayDispatchEvents } from 'discord-api-types/v10';
 import { describe, expect, it } from 'vitest';
 
 import { createMockClient } from '../../src/testing/client';
+import {
+    CACHE_INVALIDATION_EVENTS,
+    TIER_ONE_EVENTS,
+} from '../../src/core/EventRouter';
 
 describe('framework client', () => {
     it('translates the ready dispatch into a typed event', async () => {
@@ -211,5 +215,31 @@ describe('framework client', () => {
 
         expect(mock.gateway.connected).toBe(true);
         expect(mock.client.connected).toBe(true);
+    });
+
+    describe('event router tiers', () => {
+        it('re-emits an untyped dispatch under its raw name', async () => {
+            const mock = createMockClient();
+
+            const raw = new Promise<unknown>((resolve) => {
+                mock.client.on(
+                    GatewayDispatchEvents.ApplicationCommandPermissionsUpdate,
+                    (payload: unknown) => resolve(payload),
+                );
+            });
+
+            mock.dispatch(
+                GatewayDispatchEvents.ApplicationCommandPermissionsUpdate,
+                { id: 'command-1', permissions: [] },
+            );
+
+            await expect(raw).resolves.toMatchObject({ id: 'command-1' });
+        });
+
+        it('types every event the cache invalidation depends on', () => {
+            for (const event of CACHE_INVALIDATION_EVENTS) {
+                expect(TIER_ONE_EVENTS).toContain(event);
+            }
+        });
     });
 });

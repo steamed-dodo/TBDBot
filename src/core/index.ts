@@ -1,4 +1,8 @@
-export { EventRouter } from './EventRouter';
+export {
+    CACHE_INVALIDATION_EVENTS,
+    EventRouter,
+    TIER_ONE_EVENTS,
+} from './EventRouter';
 export { FrameworkClient } from './Client';
 export type {
     FrameworkClientOptions,

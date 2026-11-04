@@ -1,266 +1,454 @@
-import type { Client as CoreClient } from '@discordjs/core';
+import type { API } from '@discordjs/core';
 import { GatewayDispatchEvents } from 'discord-api-types/v10';
-import type { APIInteraction } from 'discord-api-types/v10';
 
 import { createInteraction } from '../interaction/interaction';
+import type { FrameworkGateway } from './Client';
 import type { TypedEventEmitter } from './TypedEventEmitter';
+
+/**
+ * The dispatch events the framework types.
+ *
+ * This is a closed list, not "whatever comes up": the cache invalidation
+ * story depends on four specific events being present, so they belong here
+ * by definition rather than by accident.
+ */
+export const TIER_ONE_EVENTS = [
+    GatewayDispatchEvents.InteractionCreate,
+    GatewayDispatchEvents.Ready,
+    GatewayDispatchEvents.Resumed,
+    GatewayDispatchEvents.GuildCreate,
+    GatewayDispatchEvents.GuildUpdate,
+    GatewayDispatchEvents.GuildDelete,
+    GatewayDispatchEvents.GuildRoleCreate,
+    GatewayDispatchEvents.GuildRoleUpdate,
+    GatewayDispatchEvents.GuildRoleDelete,
+    GatewayDispatchEvents.GuildMemberAdd,
+    GatewayDispatchEvents.GuildMemberRemove,
+    GatewayDispatchEvents.GuildMemberUpdate,
+    GatewayDispatchEvents.GuildMembersChunk,
+    GatewayDispatchEvents.GuildBanAdd,
+    GatewayDispatchEvents.GuildBanRemove,
+    GatewayDispatchEvents.ChannelCreate,
+    GatewayDispatchEvents.ChannelUpdate,
+    GatewayDispatchEvents.ChannelDelete,
+    GatewayDispatchEvents.MessageCreate,
+    GatewayDispatchEvents.MessageUpdate,
+    GatewayDispatchEvents.MessageDelete,
+    GatewayDispatchEvents.MessageDeleteBulk,
+    GatewayDispatchEvents.UserUpdate,
+    GatewayDispatchEvents.PresenceUpdate,
+    GatewayDispatchEvents.TypingStart,
+    GatewayDispatchEvents.VoiceStateUpdate,
+    GatewayDispatchEvents.WebhooksUpdate,
+    GatewayDispatchEvents.ThreadCreate,
+    GatewayDispatchEvents.ThreadUpdate,
+    GatewayDispatchEvents.ThreadDelete,
+    GatewayDispatchEvents.GuildAuditLogEntryCreate,
+] as const;
+
+/**
+ * The dispatch events the cache invalidation depends on.
+ *
+ * If the router does not emit one of these, the corresponding cache does not
+ * invalidate, so they are a requirement on the router rather than a
+ * description of what it happens to do.
+ */
+export const CACHE_INVALIDATION_EVENTS = [
+    GatewayDispatchEvents.GuildRoleCreate,
+    GatewayDispatchEvents.GuildRoleUpdate,
+    GatewayDispatchEvents.GuildRoleDelete,
+    GatewayDispatchEvents.GuildUpdate,
+    GatewayDispatchEvents.GuildDelete,
+    GatewayDispatchEvents.ChannelUpdate,
+    GatewayDispatchEvents.ChannelDelete,
+    GatewayDispatchEvents.GuildMemberUpdate,
+    GatewayDispatchEvents.GuildMemberRemove,
+    GatewayDispatchEvents.GuildMembersChunk,
+] as const;
+
+type DispatchHandler = (data: unknown, shardId: number) => void;
 
 /**
  * Translates raw gateway dispatch events into friendly, typed events.
  *
- * The router is the only place that knows about `GatewayDispatchEvents`.
- * Everything else in the framework works with the named events described by
- * {@link FrameworkEventMap}.
+ * The router has two tiers:
+ *
+ * - **Tier 1** — the events the framework itself needs, typed and named.
+ * - **Tier 2** — everything else, re-emitted under its raw dispatch name
+ *   with the raw payload. A user who wants `GUILD_BAN_ADD` gets it, without
+ *   the framework having typed it.
  */
 export class EventRouter {
+    private readonly handlers = new Map<string, DispatchHandler>();
+
+    private readonly api: API;
+
     /**
-     * @param core - The underlying `@discordjs/core` client.
+     * @param gateway - The gateway the dispatches arrive on.
+     * @param api - The REST facade used to build interaction views.
      * @param emitter - Emitter that receives the friendly events.
      */
     constructor(
-        private readonly core: CoreClient,
+        gateway: FrameworkGateway,
+        api: API,
         private readonly emitter: TypedEventEmitter,
     ) {
-        this.attach();
+        this.api = api;
+        this.buildHandlers();
+        this.attach(gateway);
     }
 
-    private attach(): void {
-        const core = this.core;
+    private attach(gateway: FrameworkGateway): void {
+        const listener = (
+            payload: { t: string; d: unknown },
+            shardId: number,
+        ): void => {
+            this.handle(payload.t, payload.d, shardId);
+        };
 
-        core.on(GatewayDispatchEvents.Ready, ({ data, shardId }) => {
+        gateway.on('dispatch' as never, listener as never);
+    }
+
+    private handle(t: string, data: unknown, shardId: number): void {
+        const handler = this.handlers.get(t);
+
+        if (handler) {
+            handler(data, shardId);
+
+            return;
+        }
+
+        this.emitter.emitRaw(t, data);
+    }
+
+    private on(t: string, handler: DispatchHandler): void {
+        this.handlers.set(t, handler);
+    }
+
+    private buildHandlers(): void {
+        this.on(GatewayDispatchEvents.Ready, (data, shardId) => {
+            const payload = data as {
+                application: { id: string };
+                session_id?: string;
+                user?: unknown;
+            };
+
             this.emitter.emit('ready', {
-                applicationId: data.application.id,
-                sessionId: data.session_id ?? null,
+                applicationId: payload.application.id,
+                sessionId: payload.session_id ?? null,
                 shardId,
-                user: data.user ?? null,
-                raw: data,
+                user: (payload.user ?? null) as never,
+                raw: data as never,
             });
         });
 
-        core.on(GatewayDispatchEvents.Resumed, ({ shardId }) => {
+        this.on(GatewayDispatchEvents.Resumed, (_data, shardId) => {
             this.emitter.emit('resumed', { shardId });
         });
 
-        core.on(GatewayDispatchEvents.InteractionCreate, ({ data }) => {
+        this.on(GatewayDispatchEvents.InteractionCreate, (data) => {
             this.emitter.emit(
                 'interactionCreate',
-                createInteraction(
-                    data as APIInteraction,
-                    this.core.api.interactions,
-                ),
+                createInteraction(data as never, this.interactions),
             );
         });
 
-        core.on(GatewayDispatchEvents.MessageCreate, ({ data }) => {
+        this.on(GatewayDispatchEvents.MessageCreate, (data) => {
+            const payload = data as {
+                id: string;
+                channel_id: string;
+                guild_id?: string;
+            };
+
             this.emitter.emit('messageCreate', {
-                messageId: data.id,
-                channelId: data.channel_id,
-                guildId: data.guild_id ?? null,
+                messageId: payload.id,
+                channelId: payload.channel_id,
+                guildId: payload.guild_id ?? null,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.MessageUpdate, ({ data }) => {
+        this.on(GatewayDispatchEvents.MessageUpdate, (data) => {
+            const payload = data as {
+                id: string;
+                channel_id: string;
+                guild_id?: string;
+            };
+
             this.emitter.emit('messageUpdate', {
-                messageId: data.id,
-                channelId: data.channel_id,
-                guildId: data.guild_id ?? null,
+                messageId: payload.id,
+                channelId: payload.channel_id,
+                guildId: payload.guild_id ?? null,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.MessageDelete, ({ data }) => {
+        this.on(GatewayDispatchEvents.MessageDelete, (data) => {
+            const payload = data as {
+                id: string;
+                channel_id: string;
+                guild_id?: string;
+            };
+
             this.emitter.emit('messageDelete', {
-                messageId: data.id,
-                channelId: data.channel_id,
-                guildId: data.guild_id ?? null,
+                messageId: payload.id,
+                channelId: payload.channel_id,
+                guildId: payload.guild_id ?? null,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.MessageDeleteBulk, ({ data }) => {
+        this.on(GatewayDispatchEvents.MessageDeleteBulk, (data) => {
+            const payload = data as {
+                ids: string[];
+                channel_id: string;
+                guild_id?: string;
+            };
+
             this.emitter.emit('messageDeleteBulk', {
-                channelId: data.channel_id,
-                guildId: data.guild_id ?? null,
-                ids: [...data.ids],
+                channelId: payload.channel_id,
+                guildId: payload.guild_id ?? null,
+                ids: [...payload.ids],
             });
         });
 
-        core.on(GatewayDispatchEvents.GuildCreate, ({ data }) => {
-            this.emitter.emit('guildCreate', { guildId: data.id, raw: data });
+        this.on(GatewayDispatchEvents.GuildCreate, (data) => {
+            this.emitter.emit('guildCreate', {
+                guildId: (data as { id: string }).id,
+                raw: data,
+            });
         });
 
-        core.on(GatewayDispatchEvents.GuildUpdate, ({ data }) => {
-            this.emitter.emit('guildUpdate', { guildId: data.id, raw: data });
+        this.on(GatewayDispatchEvents.GuildUpdate, (data) => {
+            this.emitter.emit('guildUpdate', {
+                guildId: (data as { id: string }).id,
+                raw: data,
+            });
         });
 
-        core.on(GatewayDispatchEvents.GuildDelete, ({ data }) => {
-            this.emitter.emit('guildDelete', { guildId: data.id, raw: data });
+        this.on(GatewayDispatchEvents.GuildDelete, (data) => {
+            this.emitter.emit('guildDelete', {
+                guildId: (data as { id: string }).id,
+                raw: data,
+            });
         });
 
-        core.on(GatewayDispatchEvents.ChannelCreate, ({ data }) => {
+        this.on(GatewayDispatchEvents.ChannelCreate, (data) => {
+            const payload = data as { id: string; guild_id?: string };
+
             this.emitter.emit('channelCreate', {
-                channelId: data.id,
-                guildId: data.guild_id ?? null,
+                channelId: payload.id,
+                guildId: payload.guild_id ?? null,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.ChannelUpdate, ({ data }) => {
+        this.on(GatewayDispatchEvents.ChannelUpdate, (data) => {
+            const payload = data as { id: string; guild_id?: string };
+
             this.emitter.emit('channelUpdate', {
-                channelId: data.id,
-                guildId: data.guild_id ?? null,
+                channelId: payload.id,
+                guildId: payload.guild_id ?? null,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.ChannelDelete, ({ data }) => {
+        this.on(GatewayDispatchEvents.ChannelDelete, (data) => {
+            const payload = data as { id: string; guild_id?: string };
+
             this.emitter.emit('channelDelete', {
-                channelId: data.id,
-                guildId: data.guild_id ?? null,
+                channelId: payload.id,
+                guildId: payload.guild_id ?? null,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.GuildMemberAdd, ({ data }) => {
+        this.on(GatewayDispatchEvents.GuildMemberAdd, (data) => {
+            const payload = data as { guild_id: string; user: { id: string } };
+
             this.emitter.emit('guildMemberAdd', {
-                guildId: data.guild_id,
-                userId: data.user.id,
+                guildId: payload.guild_id,
+                userId: payload.user.id,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.GuildMemberRemove, ({ data }) => {
+        this.on(GatewayDispatchEvents.GuildMemberRemove, (data) => {
+            const payload = data as { guild_id: string; user: { id: string } };
+
             this.emitter.emit('guildMemberRemove', {
-                guildId: data.guild_id,
-                userId: data.user.id,
+                guildId: payload.guild_id,
+                userId: payload.user.id,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.GuildMemberUpdate, ({ data }) => {
+        this.on(GatewayDispatchEvents.GuildMemberUpdate, (data) => {
+            const payload = data as { guild_id: string; user: { id: string } };
+
             this.emitter.emit('guildMemberUpdate', {
-                guildId: data.guild_id,
-                userId: data.user.id,
+                guildId: payload.guild_id,
+                userId: payload.user.id,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.GuildMembersChunk, ({ data }) => {
+        this.on(GatewayDispatchEvents.GuildMembersChunk, (data) => {
+            const payload = data as {
+                guild_id: string;
+                members: unknown[];
+                nonce?: string;
+            };
+
             this.emitter.emit('guildMembersChunk', {
-                guildId: data.guild_id,
-                count: data.members.length,
-                nonce: data.nonce ?? null,
+                guildId: payload.guild_id,
+                count: payload.members.length,
+                nonce: payload.nonce ?? null,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.GuildRoleCreate, ({ data }) => {
+        this.on(GatewayDispatchEvents.GuildRoleCreate, (data) => {
+            const payload = data as { guild_id: string; role: { id: string } };
+
             this.emitter.emit('guildRoleCreate', {
-                guildId: data.guild_id,
-                roleId: data.role.id,
+                guildId: payload.guild_id,
+                roleId: payload.role.id,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.GuildRoleUpdate, ({ data }) => {
+        this.on(GatewayDispatchEvents.GuildRoleUpdate, (data) => {
+            const payload = data as { guild_id: string; role: { id: string } };
+
             this.emitter.emit('guildRoleUpdate', {
-                guildId: data.guild_id,
-                roleId: data.role.id,
+                guildId: payload.guild_id,
+                roleId: payload.role.id,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.GuildRoleDelete, ({ data }) => {
+        this.on(GatewayDispatchEvents.GuildRoleDelete, (data) => {
+            const payload = data as { guild_id: string; role_id: string };
+
             this.emitter.emit('guildRoleDelete', {
-                guildId: data.guild_id,
-                roleId: data.role_id,
+                guildId: payload.guild_id,
+                roleId: payload.role_id,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.GuildBanAdd, ({ data }) => {
+        this.on(GatewayDispatchEvents.GuildBanAdd, (data) => {
+            const payload = data as { guild_id: string; user: { id: string } };
+
             this.emitter.emit('guildBanAdd', {
-                guildId: data.guild_id,
-                userId: data.user.id,
+                guildId: payload.guild_id,
+                userId: payload.user.id,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.GuildBanRemove, ({ data }) => {
+        this.on(GatewayDispatchEvents.GuildBanRemove, (data) => {
+            const payload = data as { guild_id: string; user: { id: string } };
+
             this.emitter.emit('guildBanRemove', {
-                guildId: data.guild_id,
-                userId: data.user.id,
+                guildId: payload.guild_id,
+                userId: payload.user.id,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.UserUpdate, ({ data }) => {
-            this.emitter.emit('userUpdate', { userId: data.id, raw: data });
+        this.on(GatewayDispatchEvents.UserUpdate, (data) => {
+            this.emitter.emit('userUpdate', {
+                userId: (data as { id: string }).id,
+                raw: data as never,
+            });
         });
 
-        core.on(GatewayDispatchEvents.PresenceUpdate, ({ data }) => {
+        this.on(GatewayDispatchEvents.PresenceUpdate, (data) => {
+            const payload = data as { user: { id: string }; guild_id?: string };
+
             this.emitter.emit('presenceUpdate', {
-                userId: data.user.id,
-                guildId: data.guild_id ?? null,
-                raw: data,
+                userId: payload.user.id,
+                guildId: payload.guild_id ?? null,
+                raw: data as never,
             });
         });
 
-        core.on(GatewayDispatchEvents.TypingStart, ({ data }) => {
+        this.on(GatewayDispatchEvents.TypingStart, (data) => {
+            const payload = data as {
+                channel_id: string;
+                guild_id?: string;
+                user_id: string;
+            };
+
             this.emitter.emit('typingStart', {
-                channelId: data.channel_id,
-                guildId: data.guild_id ?? null,
-                userId: data.user_id,
-                raw: data,
+                channelId: payload.channel_id,
+                guildId: payload.guild_id ?? null,
+                userId: payload.user_id,
+                raw: data as never,
             });
         });
 
-        core.on(GatewayDispatchEvents.VoiceStateUpdate, ({ data }) => {
+        this.on(GatewayDispatchEvents.VoiceStateUpdate, (data) => {
+            const payload = data as { guild_id?: string; user_id: string };
+
             this.emitter.emit('voiceStateUpdate', {
-                guildId: data.guild_id ?? null,
-                userId: data.user_id,
-                raw: data,
+                guildId: payload.guild_id ?? null,
+                userId: payload.user_id,
+                raw: data as never,
             });
         });
 
-        core.on(GatewayDispatchEvents.WebhooksUpdate, ({ data }) => {
+        this.on(GatewayDispatchEvents.WebhooksUpdate, (data) => {
+            const payload = data as { channel_id: string; guild_id?: string };
+
             this.emitter.emit('webhooksUpdate', {
-                channelId: data.channel_id,
-                guildId: data.guild_id ?? null,
-                raw: data,
+                channelId: payload.channel_id,
+                guildId: payload.guild_id ?? null,
+                raw: data as never,
             });
         });
 
-        core.on(GatewayDispatchEvents.ThreadCreate, ({ data }) => {
+        this.on(GatewayDispatchEvents.ThreadCreate, (data) => {
+            const payload = data as { id: string; guild_id?: string };
+
             this.emitter.emit('threadCreate', {
-                channelId: data.id,
-                guildId: data.guild_id ?? null,
+                channelId: payload.id,
+                guildId: payload.guild_id ?? null,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.ThreadUpdate, ({ data }) => {
+        this.on(GatewayDispatchEvents.ThreadUpdate, (data) => {
+            const payload = data as { id: string; guild_id?: string };
+
             this.emitter.emit('threadUpdate', {
-                channelId: data.id,
-                guildId: data.guild_id ?? null,
+                channelId: payload.id,
+                guildId: payload.guild_id ?? null,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.ThreadDelete, ({ data }) => {
+        this.on(GatewayDispatchEvents.ThreadDelete, (data) => {
+            const payload = data as { id: string; guild_id?: string };
+
             this.emitter.emit('threadDelete', {
-                channelId: data.id,
-                guildId: data.guild_id ?? null,
+                channelId: payload.id,
+                guildId: payload.guild_id ?? null,
                 raw: data,
             });
         });
 
-        core.on(GatewayDispatchEvents.GuildAuditLogEntryCreate, ({ data }) => {
+        this.on(GatewayDispatchEvents.GuildAuditLogEntryCreate, (data) => {
             this.emitter.emit('guildAuditLogEntryCreate', {
-                guildId: data.guild_id,
-                raw: data,
+                guildId: (data as { guild_id: string }).guild_id,
+                raw: data as never,
             });
         });
+    }
+
+    private get interactions(): API['interactions'] {
+        return this.api.interactions;
     }
 }
