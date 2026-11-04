@@ -79,6 +79,18 @@ export class Cache {
 
     private readonly messageKeys = new Map<string, string[]>();
 
+    /**
+     * The entries that belong to a guild, by kind.
+     *
+     * Channels and members are keyed by their own identity rather than by
+     * their guild, so a guild invalidation cannot reach them without an
+     * index. The index is what makes `invalidateGuild` complete.
+     */
+    private readonly guildIndex = new Map<
+        string,
+        Map<CacheKind, Set<string>>
+    >();
+
     private timer: ReturnType<typeof setInterval> | null = null;
 
     /**
@@ -184,6 +196,7 @@ export class Cache {
 
         await this.store.set(this.key(kind, id), JSON.stringify(entry));
 
+        this.indexEntry(kind, id, value);
         await this.enforceLimits(kind, id);
     }
 
@@ -195,6 +208,8 @@ export class Cache {
      */
     public async delete(kind: CacheKind, id: string): Promise<void> {
         await this.store.delete(this.key(kind, id));
+
+        this.unindexEntry(kind, id);
 
         if (kind === 'message') {
             const channelId = id.split(':')[0];
@@ -224,32 +239,48 @@ export class Cache {
         if (kind) {
             const prefix = `${kind}:`;
 
-            for (const key of await this.store.keys()) {
-                if (key.startsWith(prefix)) {
-                    await this.store.delete(key);
-                }
+            for (const key of await this.listKeys(prefix)) {
+                await this.store.delete(key);
             }
 
             if (kind === 'message') {
                 this.messageKeys.clear();
             }
 
+            this.guildIndex.clear();
+
             return;
         }
 
         await this.store.clear();
         this.messageKeys.clear();
+        this.guildIndex.clear();
     }
 
     /**
      * Removes every entry belonging to a guild.
+     *
+     * The guild's roles and the guild itself are keyed by the guild ID, and
+     * its channels and members are reached through the guild index, so a
+     * single invalidation clears all of them.
      *
      * @param guildId - ID of the guild.
      */
     public async invalidateGuild(guildId: string): Promise<void> {
         await this.store.delete(this.key('roles', guildId));
         await this.store.delete(this.key('guild', guildId));
-        await this.store.delete(this.key('guildMember', guildId));
+
+        const kinds = this.guildIndex.get(guildId);
+
+        if (kinds) {
+            for (const [kind, ids] of kinds) {
+                for (const id of ids) {
+                    await this.store.delete(this.key(kind, id));
+                }
+            }
+
+            this.guildIndex.delete(guildId);
+        }
     }
 
     /**
@@ -258,7 +289,7 @@ export class Cache {
     public async sweep(): Promise<void> {
         const now = Date.now();
 
-        for (const key of await this.store.keys()) {
+        for (const key of await this.listKeys()) {
             const raw = await this.store.get(key);
 
             if (raw === undefined) {
@@ -301,6 +332,124 @@ export class Cache {
         return `${kind}:${id}`;
     }
 
+    /**
+     * Lists the keys of the store in batches.
+     *
+     * The cursor is walked rather than the whole keyspace materialised in
+     * one call, because a remote store must not be asked for a full
+     * listing: Redis's `KEYS` blocks the server, and `SCAN` does not.
+     *
+     * @param prefix - Only keys with this prefix are returned.
+     * @returns The matching keys.
+     */
+    private async listKeys(prefix = ''): Promise<string[]> {
+        const keys: string[] = [];
+        let cursor = '0';
+
+        do {
+            const page = await this.store.scan(cursor);
+
+            cursor = page.cursor;
+
+            for (const key of page.keys) {
+                if (key.startsWith(prefix)) {
+                    keys.push(key);
+                }
+            }
+        } while (cursor !== '0');
+
+        return keys;
+    }
+
+    /**
+     * Records which guild an entry belongs to.
+     *
+     * @param kind - The kind of the entry.
+     * @param id - The identifier of the entry.
+     * @param value - The cached value.
+     */
+    private indexEntry(kind: CacheKind, id: string, value: unknown): void {
+        const guildId = this.guildOf(kind, id, value);
+
+        if (guildId === null) {
+            return;
+        }
+
+        let kinds = this.guildIndex.get(guildId);
+
+        if (!kinds) {
+            kinds = new Map();
+
+            this.guildIndex.set(guildId, kinds);
+        }
+
+        let entries = kinds.get(kind);
+
+        if (!entries) {
+            entries = new Set();
+
+            kinds.set(kind, entries);
+        }
+
+        entries.add(id);
+    }
+
+    /**
+     * Removes an entry from the guild index.
+     *
+     * @param kind - The kind of the entry.
+     * @param id - The identifier of the entry.
+     */
+    private unindexEntry(kind: CacheKind, id: string): void {
+        const guildId = this.guildOf(kind, id, undefined);
+
+        if (guildId === null) {
+            return;
+        }
+
+        const kinds = this.guildIndex.get(guildId);
+        const entries = kinds?.get(kind);
+
+        entries?.delete(id);
+
+        if (entries && entries.size === 0) {
+            kinds?.delete(kind);
+        }
+
+        if (kinds && kinds.size === 0) {
+            this.guildIndex.delete(guildId);
+        }
+    }
+
+    /**
+     * The guild an entry belongs to, when it can be determined.
+     *
+     * @param kind - The kind of the entry.
+     * @param id - The identifier of the entry.
+     * @param value - The cached value, when it is known.
+     * @returns The guild ID, or `null`.
+     */
+    private guildOf(
+        kind: CacheKind,
+        id: string,
+        value: unknown,
+    ): string | null {
+        if (kind === 'channel') {
+            const guildId = (value as { guild_id?: string } | undefined)
+                ?.guild_id;
+
+            return typeof guildId === 'string' ? guildId : null;
+        }
+
+        if (kind === 'guildMember') {
+            const separator = id.indexOf(':');
+
+            return separator === -1 ? null : id.slice(0, separator);
+        }
+
+        return null;
+    }
+
     private async enforceLimits(kind: CacheKind, id: string): Promise<void> {
         const maxSize = this.options[kind]?.maxSize;
 
@@ -310,9 +459,7 @@ export class Cache {
 
         if (kind !== 'message') {
             const prefix = `${kind}:`;
-            const keys = (await this.store.keys()).filter((key) =>
-                key.startsWith(prefix),
-            );
+            const keys = await this.listKeys(prefix);
 
             while (keys.length > maxSize) {
                 const oldest = keys.shift();

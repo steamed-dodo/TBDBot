@@ -5,6 +5,11 @@ import { dirname } from 'node:path';
 import type { Store } from './types';
 
 /**
+ * How many keys a scan returns at a time.
+ */
+const SCAN_BATCH = 100;
+
+/**
  * JSON file backed {@link Store} implementation.
  *
  * The whole file is rewritten on every write. Writes are atomic: the data is
@@ -36,7 +41,7 @@ export class JsonFileStore<TValue = unknown> implements Store<TValue> {
     async delete(key: string): Promise<void> {
         const values = await this.read();
 
-        if (!(key in values)) {
+        if (!Object.hasOwn(values, key)) {
             return;
         }
 
@@ -47,6 +52,18 @@ export class JsonFileStore<TValue = unknown> implements Store<TValue> {
 
     async keys(): Promise<string[]> {
         return Object.keys(await this.read());
+    }
+
+    async scan(cursor: string): Promise<{ keys: string[]; cursor: string }> {
+        const keys = Object.keys(await this.read());
+        const start = Number.parseInt(cursor, 10) || 0;
+        const page = keys.slice(start, start + SCAN_BATCH);
+        const next = start + page.length;
+
+        return {
+            keys: page,
+            cursor: next >= keys.length ? '0' : String(next),
+        };
     }
 
     async has(key: string): Promise<boolean> {
