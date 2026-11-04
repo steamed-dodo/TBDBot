@@ -1,4 +1,4 @@
-# @my-lib/utils
+# TBDBot
 
 **TBDBot** — a Discord bot framework built on [`@discordjs/core`](https://github.com/discordjs/discord.js/tree/main/packages/core).
 
@@ -8,19 +8,11 @@ and interactive UI primitives. It deliberately does **not** depend on
 `discord.js`: there is no cache manager, no sweepers, and no `Collection`, so a
 long-running bot no longer accumulates a guild/member graph.
 
-See [`docs/design.md`](docs/design.md) for the design and the reasoning
-behind it, [`docs/modules.md`](docs/modules.md) for how each module works, and
-[`docs/spike-notes.md`](docs/spike-notes.md) for the integration facts that
-were verified against the live API.
-
 ## Installation
 
 ```sh
-npm install @my-lib/utils
+npm install tbdbot
 ```
-
-The package is published under `@my-lib/utils` for now and becomes
-`@my-lib/framework` when it is ready to be released.
 
 ## At a glance
 
@@ -31,7 +23,7 @@ import {
     WidgetRouter,
     Wizard,
     button,
-} from '@my-lib/utils';
+} from 'tbdbot';
 
 const client = new FrameworkClient({ token: process.env.BOT_TOKEN! });
 const router = new WidgetRouter(client.api);
@@ -252,4 +244,4 @@ npm run build
 
 ## License
 
-ISC
+No license has been chosen yet. The package is private for now.
