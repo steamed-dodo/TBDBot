@@ -8,8 +8,10 @@ and interactive UI primitives. It deliberately does **not** depend on
 `discord.js`: there is no cache manager, no sweepers, and no `Collection`, so a
 long-running bot no longer accumulates a guild/member graph.
 
-See [`docs/design.md`](docs/design.md) for the full design and the reasoning
-behind it.
+See [`docs/design.md`](docs/design.md) for the design and the reasoning
+behind it, [`docs/modules.md`](docs/modules.md) for how each module works, and
+[`docs/spike-notes.md`](docs/spike-notes.md) for the integration facts that
+were verified against the live API.
 
 ## Installation
 
@@ -152,6 +154,12 @@ actions.
 button('confirm', 'Confirm', { style: ButtonStyle.Success });
 select('pick', [{ label: 'One', value: 'one' }]);
 ```
+
+> **An ephemeral message can only be edited for 15 minutes.** An interaction
+> token is valid for that long, and an ephemeral message lives on the
+> interaction webhook. Updating one past that point throws
+> `MessageExpiredError` rather than making a doomed request. A widget that
+> needs long-lived updates should be delivered to a channel instead.
 
 ### Commands
 
