@@ -1,5 +1,6 @@
 import { API } from '@discordjs/core';
 import { REST } from '@discordjs/rest';
+import { ComponentType } from 'discord-api-types/v10';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createInteraction } from '../../src/interaction/interaction';
@@ -74,6 +75,24 @@ describe('modal', () => {
             data: {
                 custom_id: 'ui:modal123:submit',
                 title: 'Feedback',
+                components: [
+                    {
+                        type: ComponentType.Label,
+                        label: 'Message',
+                        component: {
+                            type: ComponentType.TextInput,
+                            custom_id: 'message',
+                        },
+                    },
+                    {
+                        type: ComponentType.Label,
+                        label: 'Rating',
+                        component: {
+                            type: ComponentType.TextInput,
+                            custom_id: 'rating',
+                        },
+                    },
+                ],
             },
         });
     });
@@ -93,6 +112,45 @@ describe('modal', () => {
                 createModalSubmitInteraction('ui:modal123:submit', {
                     message: 'hello there',
                 }),
+                api.interactions,
+            ),
+        );
+
+        const state = router.stateOf<ModalState>('modal123');
+
+        expect(state?.values).toEqual({ message: 'hello there' });
+        expect(state?.submitted).toBe(true);
+    });
+
+    it('extracts submitted values from label components', async () => {
+        const modal = new Modal({
+            api,
+            title: 'Feedback',
+            fields: [{ id: 'message', label: 'Message' }],
+            routingId: 'modal123',
+        });
+
+        await router.register(modal);
+
+        await router.handle(
+            createInteraction(
+                {
+                    ...createModalSubmitInteraction('ui:modal123:submit'),
+                    data: {
+                        custom_id: 'ui:modal123:submit',
+                        components: [
+                            {
+                                type: ComponentType.Label,
+                                label: 'Message',
+                                component: {
+                                    type: ComponentType.TextInput,
+                                    custom_id: 'message',
+                                    value: 'hello there',
+                                },
+                            },
+                        ],
+                    },
+                } as never,
                 api.interactions,
             ),
         );

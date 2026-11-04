@@ -53,6 +53,9 @@ describe('message targets', () => {
         expect(request?.route).toBe(
             '/channels/{channel_id}/messages/{message_id}',
         );
+        expect(request?.url).toContain(
+            '/channels/channel-1/messages/message-1',
+        );
     });
 
     it('edits an interaction response through the webhook path', async () => {
@@ -67,6 +70,9 @@ describe('message targets', () => {
         expect(request?.method).toBe('PATCH');
         expect(request?.route).toBe(
             '/webhooks/{application_id}/{interaction_token}/messages/{message_id}',
+        );
+        expect(decodeURIComponent(request?.url ?? '')).toContain(
+            '/webhooks/app-1/token-1/messages/@original',
         );
     });
 

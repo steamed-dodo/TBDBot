@@ -236,9 +236,83 @@ describe('framework client', () => {
             await expect(raw).resolves.toMatchObject({ id: 'command-1' });
         });
 
-        it('types every event the cache invalidation depends on', () => {
-            for (const event of CACHE_INVALIDATION_EVENTS) {
+        it('emits a typed event for every cache-invalidation event', async () => {
+            const cases: readonly [
+                raw: GatewayDispatchEvents,
+                friendly: string,
+                payload: unknown,
+            ][] = [
+                [
+                    GatewayDispatchEvents.GuildRoleCreate,
+                    'guildRoleCreate',
+                    { guild_id: 'guild-1', role: { id: 'role-1' } },
+                ],
+                [
+                    GatewayDispatchEvents.GuildRoleUpdate,
+                    'guildRoleUpdate',
+                    { guild_id: 'guild-1', role: { id: 'role-1' } },
+                ],
+                [
+                    GatewayDispatchEvents.GuildRoleDelete,
+                    'guildRoleDelete',
+                    { guild_id: 'guild-1', role_id: 'role-1' },
+                ],
+                [
+                    GatewayDispatchEvents.GuildUpdate,
+                    'guildUpdate',
+                    { id: 'guild-1' },
+                ],
+                [
+                    GatewayDispatchEvents.GuildDelete,
+                    'guildDelete',
+                    { id: 'guild-1' },
+                ],
+                [
+                    GatewayDispatchEvents.ChannelUpdate,
+                    'channelUpdate',
+                    { id: 'channel-1', guild_id: 'guild-1' },
+                ],
+                [
+                    GatewayDispatchEvents.ChannelDelete,
+                    'channelDelete',
+                    { id: 'channel-1', guild_id: 'guild-1' },
+                ],
+                [
+                    GatewayDispatchEvents.GuildMemberUpdate,
+                    'guildMemberUpdate',
+                    { guild_id: 'guild-1', user: { id: 'user-1' } },
+                ],
+                [
+                    GatewayDispatchEvents.GuildMemberRemove,
+                    'guildMemberRemove',
+                    { guild_id: 'guild-1', user: { id: 'user-1' } },
+                ],
+                [
+                    GatewayDispatchEvents.GuildMembersChunk,
+                    'guildMembersChunk',
+                    { guild_id: 'guild-1', members: [{}] },
+                ],
+            ];
+
+            // The table must cover the exported list exactly: an event added
+            // to the list without a matching case fails here.
+            expect(cases.map(([event]) => event)).toEqual([
+                ...CACHE_INVALIDATION_EVENTS,
+            ]);
+
+            for (const [event, friendly, payload] of cases) {
                 expect(TIER_ONE_EVENTS).toContain(event);
+
+                const mock = createMockClient();
+                const received = new Promise<unknown>((resolve) => {
+                    mock.client.on(friendly, (data: unknown) => resolve(data));
+                });
+
+                mock.dispatch(event, payload);
+
+                await expect(received).resolves.toMatchObject({
+                    guildId: 'guild-1',
+                });
             }
         });
     });

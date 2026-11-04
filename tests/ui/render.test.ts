@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
     DEFAULT_ALLOWED_MENTIONS,
     MAX_ACTION_ROWS,
+    MAX_COMPONENTS_PER_ROW,
     button,
     navigationSelect,
     renderContent,
@@ -60,8 +61,9 @@ describe('rendering pipeline', () => {
     });
 
     it('rejects more than five components in a row', () => {
-        const row = Array.from({ length: 6 }, (_, index) =>
-            button(`a${index}`, `A${index}`),
+        const row = Array.from(
+            { length: MAX_COMPONENTS_PER_ROW + 1 },
+            (_, index) => button(`a${index}`, `A${index}`),
         );
 
         expect(() =>

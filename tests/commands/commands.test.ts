@@ -50,7 +50,7 @@ describe('command schema', () => {
         expect(days?.required).toBe(false);
     });
 
-    it('rejects a malformed command', () => {
+    it('derives a schema without validating the option bounds', () => {
         const builder = new SlashCommandBuilder()
             .setName('bad')
             .setDescription('Bad command')
@@ -62,7 +62,13 @@ describe('command schema', () => {
                     .setMaxValue(1),
             );
 
-        expect(() => deriveSchemaFromBuilder(builder)).not.toThrow();
+        const schema = deriveSchemaFromBuilder(builder);
+        const count = schema.options.find((option) => option.name === 'count');
+
+        // Deriving is deliberately free of policy: bounds are validated when
+        // the command is registered, not when its schema is read.
+        expect(count?.minValue).toBe(10);
+        expect(count?.maxValue).toBe(1);
     });
 });
 
@@ -464,6 +470,28 @@ describe('command manager', () => {
         ).toThrow(TypeError);
     });
 
+    it('rejects a command whose option bounds are inverted', () => {
+        const builder = new SlashCommandBuilder()
+            .setName('bad')
+            .setDescription('Bad command')
+            .addIntegerOption((option) =>
+                option
+                    .setName('count')
+                    .setDescription('Count')
+                    .setMinValue(10)
+                    .setMaxValue(1),
+            );
+
+        expect(() =>
+            manager.add({
+                name: 'bad',
+                description: 'Bad command',
+                builder,
+                execute: () => undefined,
+            }),
+        ).toThrow(TypeError);
+    });
+
     it('rejects duplicate commands', () => {
         const builder = new SlashCommandBuilder()
             .setName('ping')
@@ -563,6 +591,19 @@ describe('command manager', () => {
         );
 
         expect(executed).toBe(false);
+
+        const request = transport.requests.at(-1);
+
+        expect(request?.route).toBe(
+            '/interactions/{interaction_id}/{interaction_token}/callback',
+        );
+        expect(request?.body).toMatchObject({
+            type: 4,
+            data: {
+                content: 'This command can only be used in a server.',
+                flags: 64,
+            },
+        });
     });
 
     it('denies owner-only commands to other users', async () => {
@@ -590,6 +631,19 @@ describe('command manager', () => {
         );
 
         expect(executed).toBe(false);
+
+        const request = transport.requests.at(-1);
+
+        expect(request?.route).toBe(
+            '/interactions/{interaction_id}/{interaction_token}/callback',
+        );
+        expect(request?.body).toMatchObject({
+            type: 4,
+            data: {
+                content: 'This command is owner-only.',
+                flags: 64,
+            },
+        });
     });
 
     it('enforces cooldowns', async () => {
@@ -677,6 +731,12 @@ describe('command manager', () => {
 
         expect(request?.method).toBe('PUT');
         expect(request?.url).toContain('/applications/app-1/commands');
+        expect(request?.body).toEqual([
+            expect.objectContaining({
+                name: 'ping',
+                description: 'Ping',
+            }),
+        ]);
     });
 
     it('registers the commands per guild during development', async () => {
@@ -702,6 +762,12 @@ describe('command manager', () => {
         expect(request?.url).toContain(
             '/applications/app-1/guilds/guild-1/commands',
         );
+        expect(request?.body).toEqual([
+            expect.objectContaining({
+                name: 'ping',
+                description: 'Ping',
+            }),
+        ]);
     });
 
     it('rejects an autocomplete request for an option without autocomplete', async () => {

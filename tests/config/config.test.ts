@@ -85,6 +85,16 @@ describe('config loader', () => {
 
     it('reads values from a file', async () => {
         const config = await loadConfig(schema, [
+            fileSource('./tests/config/fixtures/config.json'),
+            envSource('', { BOT_TOKEN: 'from-env', PREFIX: '!' }),
+        ]);
+
+        expect(config.values['token']).toBe('from-file');
+        expect(config.values['prefix']).toBe('?');
+    });
+
+    it('ignores a missing file', async () => {
+        const config = await loadConfig(schema, [
             fileSource('./tests/config/fixtures/missing.json'),
             envSource('', { BOT_TOKEN: 'token' }),
         ]);
