@@ -21,9 +21,10 @@ export function resolveArgs(
     options: CommandOptionResolver,
 ): CommandArgs {
     const args: CommandArgs = {};
+    const branch = invokedBranch(schema, options);
 
     for (const option of options.leaf) {
-        const optionSchema = findSchemaOption(schema, option.name);
+        const optionSchema = findOptionSchema(branch, option.name);
 
         if (!optionSchema) {
             continue;
@@ -33,7 +34,7 @@ export function resolveArgs(
         args[option.name] = readValue(option, optionSchema);
     }
 
-    for (const option of collectRequiredFor(schema, options)) {
+    for (const option of collectRequired(branch)) {
         if (!Object.hasOwn(args, option.name)) {
             throw new Error(
                 `Required option "${option.name}" is missing for command "${schema.name}".`,
@@ -42,22 +43,6 @@ export function resolveArgs(
     }
 
     return args;
-}
-
-/**
- * Collects the options that must be present for the branch that was
- * invoked.
- *
- * The check follows the invoked subcommand rather than the whole schema
- * tree: the required options of a *sibling* subcommand belong to a branch
- * that was not taken, and demanding them would make a command with two
- * subcommands unusable.
- */
-function collectRequiredFor(
-    schema: CommandSchema,
-    options: CommandOptionResolver,
-): OptionSchema[] {
-    return collectRequired(invokedBranch(schema, options));
 }
 
 /**
@@ -118,34 +103,6 @@ function collectRequired(schema: CommandSchema): OptionSchema[] {
     visit(schema.options);
 
     return required;
-}
-
-function findSchemaOption(
-    schema: CommandSchema,
-    name: string,
-): OptionSchema | undefined {
-    const direct = findOptionSchema(schema, name);
-
-    if (direct) {
-        return direct;
-    }
-
-    for (const option of schema.options) {
-        if (!option.options) {
-            continue;
-        }
-
-        const nested = findSchemaOption(
-            { ...schema, options: option.options },
-            name,
-        );
-
-        if (nested) {
-            return nested;
-        }
-    }
-
-    return undefined;
 }
 
 function validateOption(option: CommandDataOption, schema: OptionSchema): void {

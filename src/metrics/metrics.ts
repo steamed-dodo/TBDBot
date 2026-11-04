@@ -115,6 +115,7 @@ export class Gauge {
      */
     public set(value: number, labels?: Labels): void {
         assertLabelsMatch(this.labelNames, labels);
+        this.validate(labels);
         this.values.set(sampleName(this.name, labels), value);
     }
 
@@ -125,6 +126,8 @@ export class Gauge {
      * @param value - The amount to add.
      */
     public inc(labels?: Labels, value = 1): void {
+        assertLabelsMatch(this.labelNames, labels);
+        this.validate(labels);
         const key = sampleName(this.name, labels);
         this.values.set(key, (this.values.get(key) ?? 0) + value);
     }
@@ -136,8 +139,24 @@ export class Gauge {
      * @param value - The amount to subtract.
      */
     public dec(labels?: Labels, value = 1): void {
+        assertLabelsMatch(this.labelNames, labels);
+        this.validate(labels);
         const key = sampleName(this.name, labels);
         this.values.set(key, (this.values.get(key) ?? 0) - value);
+    }
+
+    private validate(labels: Labels | undefined): void {
+        if (!labels) {
+            return;
+        }
+
+        for (const name of this.labelNames) {
+            const value = labels[name];
+
+            if (value !== undefined) {
+                assertBoundedLabel(name, value);
+            }
+        }
     }
 
     /**
@@ -215,6 +234,7 @@ export class Histogram {
      */
     public observe(value: number, labels?: Labels): void {
         assertLabelsMatch(this.labelNames, labels);
+        this.validate(labels);
 
         const key = sampleName(this.name, labels);
         const bucket = this.buckets.get(key) ?? {
@@ -234,6 +254,20 @@ export class Histogram {
         bucket.count += 1;
 
         this.buckets.set(key, bucket);
+    }
+
+    private validate(labels: Labels | undefined): void {
+        if (!labels) {
+            return;
+        }
+
+        for (const name of this.labelNames) {
+            const value = labels[name];
+
+            if (value !== undefined) {
+                assertBoundedLabel(name, value);
+            }
+        }
     }
 
     /**
