@@ -10,6 +10,13 @@ This document replaces the earlier `docs/adapter-plan.md`, which proposed a
 implementations. That plan is scrapped. See [Background](#background) for why,
 and [Decisions](#decisions) for the list of settled choices.
 
+**Known gaps in this document are tracked in
+[`fixes.md`](./fixes.md).** Read that alongside this one — in particular
+[F1 (ephemeral edit window)](./fixes.md#f1-ephemeral-messages-have-a-15-minute-edit-window),
+which is a correctness constraint, and
+[F3 (widget state ownership)](./fixes.md#f3-widget-state-ownership-is-contradictory),
+which is an ambiguity in the core model.
+
 ---
 
 ## Background
@@ -75,6 +82,47 @@ target architecture rather than around compatibility with a previous shape.
 - Multi-provider abstraction. This is a Discord framework, not a generic
   bot framework. Do not design for Slack or Telegram.
 - Backwards compatibility with `@my-lib/utils@0.1.x`. The API may break freely.
+
+---
+
+## Invariants
+
+These hold everywhere in the framework. Violating one is a bug that is
+usually silent, so they are worth internalising before writing any code.
+
+1. **Permission values are strings.** Discord v10 returns permission
+   bitfields as decimal strings, and 64-bit values exceed
+   `Number.MAX_SAFE_INTEGER`. Parse with `BigInt()`. Never use `Number`.
+   → [Permissions](#permissions)
+
+2. **Ephemeral messages are edited via the webhook path.** They are not
+   addressable by channel + message ID. Use
+   `api.interactions.editReply(appId, token, …)`, never
+   `api.channels.editMessage`.
+   → [Interaction responses](#interaction-responses)
+
+3. **An interaction must be acknowledged within 3 seconds.** Defer or reply
+   immediately and do all slow work afterwards.
+   → [Interaction responses](#interaction-responses)
+
+4. **Interaction tokens expire after 15 minutes.** An ephemeral message
+   cannot be edited beyond that point. This bounds the widget engine's
+   "update from anywhere" promise — see
+   [F1](./fixes.md#f1-ephemeral-messages-have-a-15-minute-edit-window).
+
+5. **`custom_id` is at most 100 characters.** The framework generates these,
+   so it must reject or truncate rather than let Discord reject the message.
+   → [Custom ID scheme](#custom-id-scheme)
+
+6. **`allowed_mentions` defaults to suppressing `everyone`, `roles`, and
+   `users`.** Rendering user-supplied content without opting in is a ping
+   bug.
+   → [Rendering pipeline](#rendering-pipeline)
+
+7. **The bot's global rate limit is 50 requests/second.** Interaction
+   endpoints are exempt from it. Long-running work must not sit in the
+   interaction path.
+   → [Rate limits](#rate-limits)
 
 ---
 
@@ -1028,29 +1076,28 @@ it is the piece most likely to be wrong, and everything else builds on it.
 The permission module is early for a different reason — it is self-contained,
 has a hard `bigint` requirement, and is needed by the command middleware.
 
-1. **Foundation** — package scaffolding on core, `core` client wrapper, typed
-   event router, REST helpers, interaction helpers.
-2. **Permissions** — `bigint`-backed bitfield, role/overwrite resolution.
-   Self-contained and independently testable.
-3. **Widget engine** — widget interface, router, routing-id generation,
-   custom-id minting and parsing, action splitting, rendering pipeline,
-   message editing for both channel and ephemeral targets, cold-start queue.
-   Full test coverage.
-4. **Menu / Wizard** — rebuilt on the widget engine, with the dynamic step
-   model.
-5. **Panel** — persistent widgets, store interface and implementations,
-   registry, restoration.
-6. **Commands + middleware** — definitions, registration, option schema
-   derivation and typed resolver, permission and cooldown middleware, error
-   handling.
-7. **Cache** — two tiers, store interface, memory implementation, event-driven
-   invalidation.
-8. **Config** — schema, loading, validation, redaction.
-9. **Metrics** — registry, Prometheus exposition, handler and optional server.
-10. **Modals** — modal widgets, `MODAL_SUBMIT` routing, builder helpers.
-11. **Stores** — Redis implementation, command-cooldown store.
-12. **Testing utilities** — mock client, payload factories, exported for
-    consumers.
+**Step 0 is a vertical spike** — see
+[F2](./fixes.md#f2-no-vertical-slice-in-the-roadmap). It is a throwaway
+end-to-end path against the real Discord API, written with no abstractions,
+whose purpose is to answer the integration questions that unit tests cannot.
+The abstractions in steps 1–3 should be extracted from it rather than
+designed ahead of it.
+
+| # | Step | Notes |
+|---|---|---|
+| 0 | **Vertical spike** | Connect, register one command, respond, edit, add a button, handle the click, edit again. Throwaway code, plus a short write-up of what was learned. |
+| 1 | Foundation | Package scaffolding on core, `core` client wrapper, typed event router, REST helpers, interaction helpers — informed by the spike. |
+| 2 | Permissions | `bigint`-backed bitfield, role/overwrite resolution. Self-contained and independently testable. |
+| 3 | Widget engine | Widget interface, router, routing-id generation, custom-id minting and parsing, action splitting, rendering pipeline, message editing for both channel and ephemeral targets, cold-start queue. Full test coverage, asserting on request shape. |
+| 4 | Menu / Wizard | Rebuilt on the widget engine, with the dynamic step model. |
+| 5 | Panel | Persistent widgets, store interface and implementations, registry, restoration. |
+| 6 | Commands + middleware | Definitions, registration, option schema derivation and typed resolver, permission and cooldown middleware, error handling. |
+| 7 | Cache | Two tiers, store interface, memory implementation, event-driven invalidation. |
+| 8 | Config | Schema, loading, validation, redaction. |
+| 9 | Metrics | Registry, Prometheus exposition, handler and optional server. |
+| 10 | Modals | Modal widgets, `MODAL_SUBMIT` routing, builder helpers. |
+| 11 | Stores | Redis implementation, command-cooldown store. |
+| 12 | Testing utilities | Mock client, payload factories, exported for consumers. |
 
 Steps 7, 8, and 9 are independent of the others and can land in any order.
 Step 10 depends on the widget engine being right, which is why it sits after
