@@ -77,7 +77,24 @@ export class Cache {
 
     private readonly sweepInterval: number;
 
-    private readonly messageKeys = new Map<string, string[]>();
+    /**
+     * The ids tracked for eviction, in write order.
+     *
+     * The key is the eviction bucket: messages are bounded per channel, so
+     * their bucket is the channel, and every other kind is bounded as a
+     * whole. Keeping the ids in process means a write never has to scan the
+     * store to count how many entries a kind holds.
+     */
+    private readonly eviction = new Map<string, string[]>();
+
+    /**
+     * The guild an entry belongs to, keyed by its store key.
+     *
+     * Channels carry their guild in the cached value rather than in their
+     * id, so a reverse index is what lets `delete()` and the sweeper
+     * unindex a channel without reading it back from the store.
+     */
+    private readonly entryGuild = new Map<string, string>();
 
     /**
      * The entries that belong to a guild, by kind.
@@ -155,13 +172,13 @@ export class Cache {
         try {
             entry = JSON.parse(raw) as CacheEntry<TValue>;
         } catch {
-            await this.store.delete(this.key(kind, id));
+            await this.removeEntry(kind, id);
 
             return undefined;
         }
 
         if (entry.expiresAt !== null && entry.expiresAt <= Date.now()) {
-            await this.store.delete(this.key(kind, id));
+            await this.removeEntry(kind, id);
 
             return undefined;
         }
@@ -207,27 +224,7 @@ export class Cache {
      * @param id - The identifier of the entry.
      */
     public async delete(kind: CacheKind, id: string): Promise<void> {
-        await this.store.delete(this.key(kind, id));
-
-        this.unindexEntry(kind, id);
-
-        if (kind === 'message') {
-            const channelId = id.split(':')[0];
-
-            if (channelId) {
-                const keys = this.messageKeys.get(channelId);
-
-                if (keys) {
-                    const filtered = keys.filter((key) => key !== id);
-
-                    if (filtered.length === 0) {
-                        this.messageKeys.delete(channelId);
-                    } else {
-                        this.messageKeys.set(channelId, filtered);
-                    }
-                }
-            }
-        }
+        await this.removeEntry(kind, id);
     }
 
     /**
@@ -243,17 +240,30 @@ export class Cache {
                 await this.store.delete(key);
             }
 
-            if (kind === 'message') {
-                this.messageKeys.clear();
+            for (const [guildId, kinds] of this.guildIndex) {
+                const entries = kinds.get(kind);
+
+                if (entries) {
+                    for (const id of entries) {
+                        this.entryGuild.delete(this.key(kind, id));
+                    }
+
+                    kinds.delete(kind);
+                }
+
+                if (kinds.size === 0) {
+                    this.guildIndex.delete(guildId);
+                }
             }
 
-            this.guildIndex.clear();
+            this.untrackKind(kind);
 
             return;
         }
 
         await this.store.clear();
-        this.messageKeys.clear();
+        this.eviction.clear();
+        this.entryGuild.clear();
         this.guildIndex.clear();
     }
 
@@ -267,20 +277,22 @@ export class Cache {
      * @param guildId - ID of the guild.
      */
     public async invalidateGuild(guildId: string): Promise<void> {
-        await this.store.delete(this.key('roles', guildId));
-        await this.store.delete(this.key('guild', guildId));
+        await this.removeEntry('roles', guildId);
+        await this.removeEntry('guild', guildId);
 
         const kinds = this.guildIndex.get(guildId);
 
-        if (kinds) {
-            for (const [kind, ids] of kinds) {
-                for (const id of ids) {
-                    await this.store.delete(this.key(kind, id));
-                }
-            }
-
-            this.guildIndex.delete(guildId);
+        if (!kinds) {
+            return;
         }
+
+        for (const [kind, ids] of kinds) {
+            for (const id of [...ids]) {
+                await this.removeEntry(kind, id);
+            }
+        }
+
+        this.guildIndex.delete(guildId);
     }
 
     /**
@@ -296,13 +308,25 @@ export class Cache {
                 continue;
             }
 
+            let expired = false;
+
             try {
                 const entry = JSON.parse(raw) as CacheEntry;
 
-                if (entry.expiresAt !== null && entry.expiresAt <= now) {
-                    await this.store.delete(key);
-                }
+                expired = entry.expiresAt !== null && entry.expiresAt <= now;
             } catch {
+                expired = true;
+            }
+
+            if (!expired) {
+                continue;
+            }
+
+            const parsed = this.splitKey(key);
+
+            if (parsed) {
+                await this.removeEntry(parsed.kind, parsed.id);
+            } else {
                 await this.store.delete(key);
             }
         }
@@ -375,6 +399,8 @@ export class Cache {
             return;
         }
 
+        this.entryGuild.set(this.key(kind, id), guildId);
+
         let kinds = this.guildIndex.get(guildId);
 
         if (!kinds) {
@@ -397,15 +423,22 @@ export class Cache {
     /**
      * Removes an entry from the guild index.
      *
+     * The guild is read from the reverse index rather than from the cached
+     * value, so this works for every caller — `delete()`, the sweeper and
+     * the eviction path — without each one having to fetch the entry first.
+     *
      * @param kind - The kind of the entry.
      * @param id - The identifier of the entry.
      */
     private unindexEntry(kind: CacheKind, id: string): void {
-        const guildId = this.guildOf(kind, id, undefined);
+        const entryKey = this.key(kind, id);
+        const guildId = this.entryGuild.get(entryKey);
 
-        if (guildId === null) {
+        if (guildId === undefined) {
             return;
         }
+
+        this.entryGuild.delete(entryKey);
 
         const kinds = this.guildIndex.get(guildId);
         const entries = kinds?.get(kind);
@@ -457,34 +490,136 @@ export class Cache {
             return;
         }
 
-        if (kind !== 'message') {
-            const prefix = `${kind}:`;
-            const keys = await this.listKeys(prefix);
+        const keys = this.trackForEviction(kind, id);
 
-            while (keys.length > maxSize) {
-                const oldest = keys.shift();
+        while (keys.length > maxSize) {
+            const oldest = keys.shift();
 
-                if (oldest) {
-                    await this.store.delete(oldest);
+            if (!oldest) {
+                continue;
+            }
+
+            await this.store.delete(this.key(kind, oldest));
+            this.unindexEntry(kind, oldest);
+        }
+
+        if (keys.length === 0) {
+            this.eviction.delete(this.bucketOf(kind, id));
+        }
+    }
+
+    /**
+     * Removes an entry from the store and from every in-process index.
+     *
+     * @param kind - The kind of the entry.
+     * @param id - The identifier of the entry.
+     */
+    private async removeEntry(kind: CacheKind, id: string): Promise<void> {
+        await this.store.delete(this.key(kind, id));
+        this.unindexEntry(kind, id);
+        this.untrackEntry(kind, id);
+    }
+
+    /**
+     * The eviction bucket an entry belongs to.
+     *
+     * Messages are bounded per channel; every other kind is bounded as a
+     * whole, so its bucket is the kind itself.
+     *
+     * @param kind - The kind of the entry.
+     * @param id - The identifier of the entry.
+     * @returns The bucket key.
+     */
+    private bucketOf(kind: CacheKind, id: string): string {
+        return kind === 'message'
+            ? `message:${id.split(':')[0] ?? ''}`
+            : kind;
+    }
+
+    /**
+     * Records an entry as the newest in its eviction bucket.
+     *
+     * Re-writing an entry moves it to the end rather than adding it twice,
+     * so a repeated write cannot make an older copy of the same entry look
+     * like the oldest one and evict the current value.
+     *
+     * @param kind - The kind of the entry.
+     * @param id - The identifier of the entry.
+     * @returns The bucket's ids, oldest first.
+     */
+    private trackForEviction(kind: CacheKind, id: string): string[] {
+        const bucket = this.bucketOf(kind, id);
+        const keys = (this.eviction.get(bucket) ?? []).filter(
+            (key) => key !== id,
+        );
+
+        keys.push(id);
+        this.eviction.set(bucket, keys);
+
+        return keys;
+    }
+
+    /**
+     * Forgets an entry from its eviction bucket.
+     *
+     * @param kind - The kind of the entry.
+     * @param id - The identifier of the entry.
+     */
+    private untrackEntry(kind: CacheKind, id: string): void {
+        const bucket = this.bucketOf(kind, id);
+        const keys = this.eviction.get(bucket);
+
+        if (!keys) {
+            return;
+        }
+
+        const next = keys.filter((key) => key !== id);
+
+        if (next.length === 0) {
+            this.eviction.delete(bucket);
+        } else {
+            this.eviction.set(bucket, next);
+        }
+    }
+
+    /**
+     * Forgets every eviction bucket of a kind.
+     *
+     * @param kind - The kind to forget.
+     */
+    private untrackKind(kind: CacheKind): void {
+        if (kind === 'message') {
+            for (const bucket of [...this.eviction.keys()]) {
+                if (bucket.startsWith('message:')) {
+                    this.eviction.delete(bucket);
                 }
             }
 
             return;
         }
 
-        const channelId = id.split(':')[0] ?? '';
-        const keys = this.messageKeys.get(channelId) ?? [];
+        this.eviction.delete(kind);
+    }
 
-        keys.push(id);
+    /**
+     * Splits a store key into the kind and the id it was built from.
+     *
+     * @param key - The store key.
+     * @returns The parts, or `null` when the key is not a cache key.
+     */
+    private splitKey(key: string): { kind: CacheKind; id: string } | null {
+        const separator = key.indexOf(':');
 
-        while (keys.length > maxSize) {
-            const oldest = keys.shift();
-
-            if (oldest) {
-                await this.store.delete(this.key(kind, oldest));
-            }
+        if (separator === -1) {
+            return null;
         }
 
-        this.messageKeys.set(channelId, keys);
+        const kind = key.slice(0, separator);
+
+        if (!Object.hasOwn(CACHE_DEFAULTS, kind)) {
+            return null;
+        }
+
+        return { kind: kind as CacheKind, id: key.slice(separator + 1) };
     }
 }
