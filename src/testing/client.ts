@@ -23,7 +23,9 @@ export interface MockClient {
      * @param raw - The payload Discord would have sent.
      * @returns The interaction.
      */
-    createInteraction(raw: Parameters<typeof createInteraction>[0]): Interaction;
+    createInteraction(
+        raw: Parameters<typeof createInteraction>[0],
+    ): Interaction;
 
     /**
      * Pushes a raw gateway dispatch into the client.
@@ -58,7 +60,8 @@ export function createMockClient(
         client,
         transport,
         gateway,
-        createInteraction: (raw) => createInteraction(raw, client.api.interactions),
+        createInteraction: (raw) =>
+            createInteraction(raw, client.api.interactions),
         dispatch: (t, d, shardId) => gateway.dispatch(t, d, shardId),
     };
 }

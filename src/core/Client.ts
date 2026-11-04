@@ -76,7 +76,9 @@ export interface FrameworkClientOptions {
  *
  * Returning `true` marks the interaction as handled and stops the chain.
  */
-export type InteractionHandler = (interaction: Interaction) => boolean | Promise<boolean>;
+export type InteractionHandler = (
+    interaction: Interaction,
+) => boolean | Promise<boolean>;
 
 /**
  * A task executed during shutdown.
@@ -142,7 +144,9 @@ export class FrameworkClient extends TypedEventEmitter {
                 rest: this.rest,
                 token: options.token,
                 intents: options.intents ?? GatewayIntentBits.Guilds,
-                ...(options.shardCount === undefined ? {} : { shardCount: options.shardCount }),
+                ...(options.shardCount === undefined
+                    ? {}
+                    : { shardCount: options.shardCount }),
             });
 
         this.core = new CoreClient({ rest: this.rest, gateway: this.gateway });
@@ -160,7 +164,9 @@ export class FrameworkClient extends TypedEventEmitter {
         });
 
         this.on('error', () => {
-            this.rejectReady?.(new Error('The client emitted an error before becoming ready.'));
+            this.rejectReady?.(
+                new Error('The client emitted an error before becoming ready.'),
+            );
             this.rejectReady = null;
             this.resolveReady = null;
         });

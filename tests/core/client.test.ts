@@ -71,9 +71,7 @@ describe('framework client', () => {
 
         const interaction = new Promise<{ commandName: string | null }>(
             (resolve) => {
-                mock.client.on('interactionCreate', (event) =>
-                    resolve(event),
-                );
+                mock.client.on('interactionCreate', (event) => resolve(event));
             },
         );
 

@@ -79,10 +79,7 @@ export function attachCacheInvalidation(
                 listener: (...args: never[]) => void;
             };
 
-            client.off(
-                typed.event,
-                typed.listener as never,
-            );
+            client.off(typed.event, typed.listener as never);
         }
     };
 }

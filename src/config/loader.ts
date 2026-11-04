@@ -227,7 +227,10 @@ function coerce(
                 value = field.transform(value);
             }
 
-            if (field.minLength !== undefined && value.length < field.minLength) {
+            if (
+                field.minLength !== undefined &&
+                value.length < field.minLength
+            ) {
                 return {
                     value: undefined,
                     origin,
@@ -235,7 +238,10 @@ function coerce(
                 };
             }
 
-            if (field.maxLength !== undefined && value.length > field.maxLength) {
+            if (
+                field.maxLength !== undefined &&
+                value.length > field.maxLength
+            ) {
                 return {
                     value: undefined,
                     origin,

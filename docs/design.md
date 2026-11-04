@@ -1,7 +1,7 @@
 # Framework Design
 
-Status: **draft, for discussion.** Codename: **TBDBot** (a pun on the name
-being TBD). The package will be renamed from `@my-lib/utils` to
+Status: **implemented.** Codename: **TBDBot** (a pun on the name
+being TBD). The package is renamed from `@my-lib/utils` to
 `.../framework` when it is ready to be published; `tbd-bot` and `tbdframework`
 are both available on npm.
 
@@ -1055,6 +1055,42 @@ has a hard `bigint` requirement, and is needed by the command middleware.
 Steps 7, 8, and 9 are independent of the others and can land in any order.
 Step 10 depends on the widget engine being right, which is why it sits after
 the menu and panel work has validated the model.
+
+### Implementation status
+
+Every step of the roadmap above has been implemented. The modules map onto
+the roadmap like this:
+
+| Step | Module |
+|---|---|
+| 1. Foundation | `src/core`, `src/api`, `src/interaction` |
+| 2. Permissions | `src/permissions` |
+| 3. Widget engine | `src/ui` (`ids`, `render`, `router`, `messages`) |
+| 4. Menu / Wizard | `src/ui/menu` |
+| 5. Panel | `src/ui/panel` |
+| 6. Commands + middleware | `src/commands` |
+| 7. Cache | `src/cache` |
+| 8. Config | `src/config` |
+| 9. Metrics | `src/metrics` |
+| 10. Modals | `src/ui/modal` |
+| 11. Stores | `src/store` (including the Redis implementation) |
+| 12. Testing utilities | `src/testing` |
+
+Two decisions were settled during implementation, and both follow from the
+rules already stated above:
+
+- **The reserved action marker is `~`.** It is a character that cannot
+  appear in a user-defined action, so the split between the reserved part and
+  the user part is unambiguous and cannot be spoofed. Only the first two
+  separators of a custom id are significant, so a user's action may contain
+  `:` freely.
+- **The derived schema is validated at registration time.** A command whose
+  options are malformed fails at boot rather than when a user invokes it.
+
+The `defineCommand()` helper and the typed-schema builder variant recorded in
+the open questions are still out of scope: the schema infrastructure they
+would need is in place, but they are not required to ship a usable
+framework.
 
 ---
 

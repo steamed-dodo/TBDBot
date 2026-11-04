@@ -84,7 +84,11 @@ export class JsonFileStore<TValue = unknown> implements Store<TValue> {
 
         const parsed: unknown = JSON.parse(contents);
 
-        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        if (
+            typeof parsed !== 'object' ||
+            parsed === null ||
+            Array.isArray(parsed)
+        ) {
             throw new TypeError(`Invalid store file: "${this.filePath}".`);
         }
 

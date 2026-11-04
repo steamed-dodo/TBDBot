@@ -173,7 +173,11 @@ export interface Interaction {
     readonly commandOptions: readonly unknown[];
 
     /** Type of the focused option during an autocomplete interaction. */
-    readonly focusedOption: { name: string; type: ApplicationCommandOptionType; value: string } | null;
+    readonly focusedOption: {
+        name: string;
+        type: ApplicationCommandOptionType;
+        value: string;
+    } | null;
 
     /** Whether this interaction is an application command invocation. */
     isCommand(): boolean;

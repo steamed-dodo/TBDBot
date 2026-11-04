@@ -1,7 +1,5 @@
 import type { API } from '@discordjs/core';
-import type {
-    RESTPostAPIApplicationCommandsJSONBody,
-} from 'discord-api-types/v10';
+import type { RESTPostAPIApplicationCommandsJSONBody } from 'discord-api-types/v10';
 
 import type { Interaction } from '../interaction/types';
 import { resolveArgs } from './args';
@@ -45,7 +43,10 @@ export class CommandManager {
 
     private readonly commands = new Map<string, CommandDefinition>();
 
-    private readonly schemas = new Map<string, ReturnType<typeof deriveSchemaFromBuilder>>();
+    private readonly schemas = new Map<
+        string,
+        ReturnType<typeof deriveSchemaFromBuilder>
+    >();
 
     private readonly pipelines = new Map<string, Middleware[]>();
 
@@ -185,6 +186,75 @@ export class CommandManager {
             guildId,
             this.toJSON() as never,
         );
+    }
+
+    /**
+     * Registers the commands for the environment the bot runs in.
+     *
+     * Guild-scoped registration propagates faster, which makes it the right
+     * choice during development; production bots usually register globally.
+     *
+     * @param options - The application and the guilds to register for.
+     */
+    public async register(options: {
+        readonly applicationId: string;
+        readonly guildIds?: readonly string[];
+    }): Promise<void> {
+        if (options.guildIds && options.guildIds.length > 0) {
+            for (const guildId of options.guildIds) {
+                await this.registerGuild(options.applicationId, guildId);
+            }
+
+            return;
+        }
+
+        await this.registerGlobal(options.applicationId);
+    }
+
+    /**
+     * Handles an autocomplete interaction.
+     *
+     * The schema records which options support autocomplete, so the focused
+     * option can be validated before the handler runs.
+     *
+     * @param interaction - The autocomplete interaction.
+     * @param handler - Called with the focused option's name and value.
+     * @returns `true` when the interaction was handled.
+     */
+    public async handleAutocomplete(
+        interaction: Interaction,
+        handler: (focused: { name: string; value: string }) => Promise<void>,
+    ): Promise<boolean> {
+        if (!interaction.isAutocomplete()) {
+            return false;
+        }
+
+        const name = interaction.commandName;
+        const focused = interaction.focusedOption;
+
+        if (!name || !focused) {
+            return false;
+        }
+
+        const schema = this.schemas.get(name);
+
+        if (!schema) {
+            return false;
+        }
+
+        const option = schema.options.find(
+            (candidate) => candidate.name === focused.name,
+        );
+
+        if (!option?.autocomplete) {
+            await interaction.createAutocompleteResponse({ choices: [] });
+
+            return true;
+        }
+
+        await handler({ name: focused.name, value: focused.value });
+
+        return true;
     }
 
     /**

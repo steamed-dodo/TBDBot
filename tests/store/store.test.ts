@@ -4,11 +4,7 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import {
-    JsonFileStore,
-    MemoryStore,
-    RedisStore,
-} from '../../src/store/index';
+import { JsonFileStore, MemoryStore, RedisStore } from '../../src/store/index';
 
 describe('memory store', () => {
     it('stores, reads and deletes values', async () => {
@@ -58,7 +54,9 @@ describe('json file store', () => {
     });
 
     it('treats a missing file as an empty store', async () => {
-        const store = new JsonFileStore<string>(join(directory, 'missing.json'));
+        const store = new JsonFileStore<string>(
+            join(directory, 'missing.json'),
+        );
 
         expect(await store.keys()).toEqual([]);
     });

@@ -5,10 +5,9 @@ import type { MessageTarget } from '../messages';
 import { deleteTarget, editTarget, sendChannelMessage } from '../messages';
 import { renderContent } from '../render';
 import type { WidgetRouter } from '../router';
-import type { Panel } from './Panel';
 import { PanelRegistry } from './PanelRegistry';
 import { MemoryPanelStore } from './PanelStore';
-import type { PanelStore, StoredPanel } from './types';
+import type { PanelStore, PersistentWidget, StoredPanel } from './types';
 
 /** Configuration options used to construct a {@link PanelManager}. */
 export interface PanelManagerOptions {
@@ -34,11 +33,15 @@ export interface PanelManagerOptions {
 }
 
 /**
- * Owns the lifecycle of persistent panels.
+ * Owns the lifecycle of persistent widgets.
  *
- * The manager keeps the store, the registry of panel factories, and the set
- * of live panels in sync. On boot it restores the panels, re-binding their
- * messages so that the widgets keep routing correctly.
+ * The manager keeps the store, the registry of widget factories, and the set
+ * of live widgets in sync. On boot it restores the widgets, re-binding their
+ * messages so that they keep routing correctly.
+ *
+ * The manager works with any widget that exposes a `type` and a
+ * `serialize()` method, so a persistent menu is restored exactly like a
+ * panel is.
  */
 export class PanelManager {
     /** The REST facade used to send and edit panel messages. */
@@ -55,7 +58,7 @@ export class PanelManager {
 
     private readonly registry = new PanelRegistry();
 
-    private readonly panels = new Map<string, Panel>();
+    private readonly panels = new Map<string, PersistentWidget>();
 
     private readonly records = new Map<string, StoredPanel>();
 
@@ -70,13 +73,16 @@ export class PanelManager {
     }
 
     /**
-     * Registers a factory for a panel type.
+     * Registers a factory for a widget type.
      *
-     * @param type - Panel type handled by the factory.
-     * @param factory - Function that recreates a panel from a stored record.
+     * @param type - Widget type handled by the factory.
+     * @param factory - Function that recreates a widget from a stored record.
      * @returns This manager, allowing calls to be chained.
      */
-    public define(type: string, factory: Parameters<PanelRegistry['define']>[1]): this {
+    public define(
+        type: string,
+        factory: Parameters<PanelRegistry['define']>[1],
+    ): this {
         this.registry.define(type, factory);
 
         return this;
@@ -88,12 +94,12 @@ export class PanelManager {
      * @param id - ID of the panel.
      * @returns The panel, or `undefined` when it is not live.
      */
-    public get(id: string): Panel | undefined {
+    public get(id: string): PersistentWidget | undefined {
         return this.panels.get(id);
     }
 
     /** Every panel currently managed. */
-    public get all(): readonly Panel[] {
+    public get all(): readonly PersistentWidget[] {
         return [...this.panels.values()];
     }
 
@@ -127,7 +133,7 @@ export class PanelManager {
      * @returns The ID of the created message.
      */
     public async attach(
-        panel: Panel,
+        panel: PersistentWidget,
         channelId: string,
         guildId: string | null = null,
     ): Promise<string> {
@@ -147,7 +153,7 @@ export class PanelManager {
             messageId: created.id,
         });
 
-        await panel.onCreate();
+        await panel.onCreate?.();
 
         await this.persist(panel, guildId);
 
@@ -159,7 +165,7 @@ export class PanelManager {
      *
      * @param panel - The panel to refresh.
      */
-    public async refresh(panel: Panel): Promise<void> {
+    public async refresh(panel: PersistentWidget): Promise<void> {
         if (!panel.messageId || !panel.channelId) {
             return;
         }
@@ -185,7 +191,7 @@ export class PanelManager {
      * @param options - Whether the message is deleted.
      */
     public async remove(
-        panel: Panel,
+        panel: PersistentWidget,
         options: { readonly deleteMessage?: boolean } = {},
     ): Promise<void> {
         this.panels.delete(panel.id);
@@ -200,7 +206,7 @@ export class PanelManager {
             }).catch(() => undefined);
         }
 
-        await panel.onDestroy();
+        await panel.onDestroy?.();
 
         await this.save();
     }
@@ -211,7 +217,7 @@ export class PanelManager {
      * @param panel - The panel.
      * @returns The target, or `null` when the panel is not attached.
      */
-    public targetOf(panel: Panel): MessageTarget | null {
+    public targetOf(panel: PersistentWidget): MessageTarget | null {
         if (!panel.messageId || !panel.channelId) {
             return null;
         }
@@ -237,7 +243,7 @@ export class PanelManager {
             return;
         }
 
-        let panel: Panel;
+        let panel: PersistentWidget;
 
         try {
             panel = await factory(record);
@@ -264,10 +270,13 @@ export class PanelManager {
             messageId: record.messageId,
         });
 
-        await panel.onLoad();
+        await panel.onLoad?.();
     }
 
-    private async persist(panel: Panel, guildId: string | null): Promise<void> {
+    private async persist(
+        panel: PersistentWidget,
+        guildId: string | null,
+    ): Promise<void> {
         const data = panel.serialize();
 
         const record: StoredPanel = {

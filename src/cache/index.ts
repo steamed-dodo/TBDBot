@@ -6,8 +6,4 @@ export {
     DEFAULT_SWEEP_INTERVAL,
     MINIMAL_TIER_KINDS,
 } from './types';
-export type {
-    CacheKind,
-    CacheKindOptions,
-    CacheTier,
-} from './types';
+export type { CacheKind, CacheKindOptions, CacheTier } from './types';

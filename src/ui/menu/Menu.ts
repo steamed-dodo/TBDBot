@@ -65,6 +65,22 @@ export class Menu implements Widget<MenuState> {
     /** Namespace used for the menu's custom ids. */
     public readonly namespace: string;
 
+    /**
+     * The type used to look up the factory that recreates the menu.
+     *
+     * @defaultValue 'menu'
+     */
+    public readonly type: string;
+
+    /** ID of the Discord message backing the menu, when sent. */
+    public messageId: string | null = null;
+
+    /** ID of the channel containing the menu's message, when sent. */
+    public channelId: string | null = null;
+
+    /** ID of the guild containing the menu's message, when sent. */
+    public guildId: string | null = null;
+
     private readonly api: API;
 
     private readonly steps: readonly Step[];
@@ -111,6 +127,7 @@ export class Menu implements Widget<MenuState> {
         this.timeout = options.timeout ?? 180_000;
         this.deleteOnTimeout = options.deleteOnTimeout ?? false;
         this.namespace = options.namespace ?? 'ui';
+        this.type = options.type ?? 'menu';
         this.navigation =
             options.navigation ??
             (this.mode === 'wizard' ? 'wizard' : 'prev-next');
@@ -204,7 +221,9 @@ export class Menu implements Widget<MenuState> {
         }
 
         return {
-            ...(content.content === undefined ? {} : { content: content.content }),
+            ...(content.content === undefined
+                ? {}
+                : { content: content.content }),
             ...(content.embeds === undefined ? {} : { embeds: content.embeds }),
             ...(rows.length === 0 ? {} : { components: rows }),
         };
@@ -272,7 +291,10 @@ export class Menu implements Widget<MenuState> {
      * @param stepId - ID of the step to display.
      * @param context - Context describing the triggering interaction.
      */
-    public async setStep(stepId: string, context?: ActionContext): Promise<void> {
+    public async setStep(
+        stepId: string,
+        context?: ActionContext,
+    ): Promise<void> {
         if (!this.stepById.has(stepId)) {
             throw new TypeError(`Unknown step: "${stepId}".`);
         }
@@ -296,11 +318,7 @@ export class Menu implements Widget<MenuState> {
     ): Promise<string> {
         const content = await this.render();
         const message = renderContent(content, this.namespace, this.routingId);
-        const created = await sendChannelMessage(
-            this.api,
-            channelId,
-            message,
-        );
+        const created = await sendChannelMessage(this.api, channelId, message);
 
         this.target = {
             kind: 'channel',
@@ -361,6 +379,41 @@ export class Menu implements Widget<MenuState> {
         const message = renderContent(content, this.namespace, this.routingId);
 
         await editTarget(this.api, this.target, message);
+    }
+
+    /**
+     * Returns the state that should be persisted.
+     *
+     * A menu that is persisted this way is restored with
+     * {@link Menu.restore}, which is what makes a persistent menu possible.
+     *
+     * @returns The serialisable state of the menu.
+     */
+    public serialize(): MenuState {
+        return this.state;
+    }
+
+    /**
+     * Restores the menu from a persisted state.
+     *
+     * @param state - The state produced by {@link Menu.serialize}.
+     */
+    public restore(state: Partial<MenuState>): void {
+        if (state.currentStepId && this.stepById.has(state.currentStepId)) {
+            this.currentStepId = state.currentStepId;
+        }
+
+        if (state.answers) {
+            this.answers = { ...state.answers };
+        }
+
+        if (state.history) {
+            this.history = [...state.history];
+        }
+
+        if (state.completed !== undefined) {
+            this.completed = state.completed;
+        }
     }
 
     /**
@@ -643,7 +696,9 @@ export class Menu implements Widget<MenuState> {
     private async complete(context: ActionContext): Promise<void> {
         this.completed = true;
 
-        await this.options.onComplete?.(this.createContext(context.interaction));
+        await this.options.onComplete?.(
+            this.createContext(context.interaction),
+        );
         await this.refresh(context);
     }
 

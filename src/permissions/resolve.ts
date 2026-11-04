@@ -75,9 +75,7 @@ export function resolvePermissions(
     const { guild, roles, member, channel } = input;
 
     const everyoneRole = roles.find((role) => role.id === guild.id);
-    const memberRoles = roles.filter((role) =>
-        member.roles.includes(role.id),
-    );
+    const memberRoles = roles.filter((role) => member.roles.includes(role.id));
 
     const base = new PermissionsBitField(
         parsePermissions(everyoneRole?.permissions ?? 0),

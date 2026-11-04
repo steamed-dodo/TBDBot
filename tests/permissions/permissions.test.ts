@@ -14,9 +14,7 @@ import {
 
 describe('permissions bitfield', () => {
     it('parses the string bitfields Discord sends', () => {
-        expect(parsePermissions('2248473465835073')).toBe(
-            2248473465835073n,
-        );
+        expect(parsePermissions('2248473465835073')).toBe(2248473465835073n);
         expect(parsePermissions(8)).toBe(8n);
         expect(parsePermissions(undefined)).toBe(0n);
         expect(parsePermissions('')).toBe(0n);
@@ -88,7 +86,8 @@ describe('permission resolution', () => {
             roles: [
                 createRole({
                     id: 'guild-1',
-                    permissions: PermissionsBitField.Flags.Administrator.toString(),
+                    permissions:
+                        PermissionsBitField.Flags.Administrator.toString(),
                 }),
             ],
             member: createMember({ user: { id: 'user-1' }, roles: [] }),

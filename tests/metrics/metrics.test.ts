@@ -118,7 +118,10 @@ async function invoke(
     listener: (
         request: { url?: string },
         response: {
-            writeHead: (status: number, headers?: Record<string, string>) => void;
+            writeHead: (
+                status: number,
+                headers?: Record<string, string>,
+            ) => void;
             end: (body?: string) => void;
         },
     ) => void,

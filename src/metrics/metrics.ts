@@ -292,7 +292,9 @@ export class Histogram {
                     le: '+Inf',
                 })} ${bucket.count}`,
             );
-            lines.push(`${this.name}_sum${formatLabels(bucket.labels)} ${bucket.sum}`);
+            lines.push(
+                `${this.name}_sum${formatLabels(bucket.labels)} ${bucket.sum}`,
+            );
             lines.push(
                 `${this.name}_count${formatLabels(bucket.labels)} ${bucket.count}`,
             );
