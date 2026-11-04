@@ -324,3 +324,27 @@ where it landed.
 | [F7](./fixes.md#f7-the-event-router-scope-is-undefined) | The router has two tiers: a closed list of typed events, and a raw passthrough for everything else. See [Modules → Event router](./modules.md#event-router). |
 | [F8](./fixes.md#f8-persistent-widgets-should-not-hold-a-message-object) | A persistent widget holds only identifiers. See [Modules → Panel](./modules.md#panel). |
 | [F9](./fixes.md#f9-design-doc-is-long-and-hard-to-navigate) | This document is the entry point; the detail lives in [`discord-notes.md`](./discord-notes.md) and [`modules.md`](./modules.md). |
+
+A **second pass** over the implementation found twelve further defects,
+recorded as F10–F21 in
+[`fixes.md` § Second pass](./fixes.md#second-pass-defects-found-in-the-implementation).
+All twelve have been applied.
+
+| ID | Applied as |
+|---|---|
+| [F10](./fixes.md#f10-buttons-without-a-style-render-an-invalid-payload) | A button's style is part of the specification and defaults to `Primary`, so the payload is always valid. |
+| [F11](./fixes.md#f11-the-reserved-action-prefix-can-be-spoofed) | User actions and reserved actions are minted through separate paths; a user action may never carry the marker. See [Modules → Action payloads](./modules.md#action-payloads). |
+| [F12](./fixes.md#f12-permissionbitfield-resolve-leaks-objectprototype-keys) | `Object.hasOwn` replaces `in`, here and in the three other places the pattern appeared. |
+| [F13](./fixes.md#f13-the-router-acknowledges-the-interaction-after-the-handler) | The router acknowledges on the handler's behalf at 2.5 seconds if it has not answered. See [Modules → Acknowledgement](./modules.md#acknowledgement). |
+| [F14](./fixes.md#f14-required-options-of-sibling-subcommands-are-cross-checked) | The required-option check follows the invoked branch. |
+| [F15](./fixes.md#f15-required-options-nested-two-levels-deep-are-never-checked) | The same check is recursive. |
+| [F16](./fixes.md#f16-invalidateguild-leaves-the-guilds-cached-channels-behind) | A guild index records which cached entries belong to which guild. |
+| [F17](./fixes.md#f17-invalidateguild-uses-a-member-key-that-is-never-written) | The same index reaches the guild's members. |
+| [F18](./fixes.md#f18-getfocusedtrue-never-returns-the-focused-option) | `getFocused(true)` returns the focused option itself. |
+| [F19](./fixes.md#f19-the-access-policy-does-not-cover-custom-actions) | The access policy lives on the widget and the router applies it to every action. See [Modules → Interactive UI](./modules.md#interactive-ui). |
+| [F20](./fixes.md#f20-register-accepts-a-missing-state-and-stores-undefined) | `register(widget, state, target?)` requires the state. |
+| [F21](./fixes.md#f21-the-redis-store-uses-the-blocking-keys-command) | The `Store` interface exposes a cursor; Redis is walked with `SCAN`. See [Modules → Stores](./modules.md#stores). |
+
+The tests are type-checked as part of `npm run typecheck`: two of the
+defects were hidden by an optional parameter and a cast, and only a type
+check would have caught them before they ran.

@@ -249,6 +249,15 @@ The reserved prefix is `~` — a character that cannot appear in a user-defined
 action under the framework's own rules, so the split is unambiguous and
 cannot be spoofed.
 
+**The two paths are separate, not merely validated.** `createCustomId()`
+accepts user actions only and rejects the marker anywhere; the framework
+mints its own actions through `createReservedCustomId()`, which accepts only
+the closed set in `RESERVED_ACTIONS` (`next`, `previous`, `back`, `select`,
+`choice`). Component specifications carry an explicit `reserved?: boolean`
+that only the framework's own chrome sets, so a hand-built specification
+cannot enter the reserved namespace at all. See
+[`fixes.md` §F11](./fixes.md#f11-the-reserved-action-prefix-can-be-spoofed).
+
 ### Cold-start routing
 
 **Resolved:** queue the interaction.
@@ -324,10 +333,27 @@ stable.
 
 ### Acknowledgement
 
-An interaction must be acknowledged within 3 seconds. The framework defers
-before it dispatches an action, and — because a widget cannot be trusted to
-remember — the router acknowledges any interaction that a handler left
-unanswered.
+An interaction must be acknowledged within 3 seconds. The router arms a
+deadline when it dispatches an action and, if the handler has not answered
+by then, acknowledges on its behalf — a component interaction with
+`deferUpdate`, a modal submission with `defer`.
+
+The deadline is deliberately not "defer before dispatching": a deferral is a
+response, and Discord rejects a second one, so a handler that opens a modal
+would break. Answering at 2.5 seconds instead keeps the guarantee for a slow
+handler and leaves a fast one — including a modal-opening one — untouched.
+The deadline is the `acknowledgeAfter` router option, so a test can set it
+to a few milliseconds. See
+[`fixes.md` §F13](./fixes.md#f13-the-router-acknowledges-the-interaction-after-the-handler).
+
+### Access policy
+
+`access` lives on the widget (`Widget.access`) and the router applies it
+before dispatching **any** action — the framework's own navigation and a
+step's custom buttons alike. A widget registered directly with the router
+gets the same protection, which was not true while the check lived in the
+flow. See
+[`fixes.md` §F19](./fixes.md#f19-the-access-policy-does-not-cover-custom-actions).
 
 ## Menu and Wizard
 
@@ -539,6 +565,14 @@ Concretely:
 The `args` object is a plain record, so it is trivially serializable, easy to
 log, and simple to test. It replaces the resolver for the common case.
 
+**The required check follows the invoked branch.** A command with two
+subcommands that each declare a required option must not demand both: the
+options of the branch that was not taken are not missing, they are irrelevant.
+The check therefore walks the schema alongside the resolver's hoisted
+subcommand, recursively, so a required option inside a group is enforced too.
+See [`fixes.md` §F14](./fixes.md#f14-required-options-of-sibling-subcommands-are-cross-checked)
+and [§F15](./fixes.md#f15-required-options-nested-two-levels-deep-are-never-checked).
+
 **Why not A.** A separately-declared typed schema would give better types, but
 it means the user declares options twice — once in the schema for the types,
 once in the builder for Discord — or the framework generates the builder from
@@ -678,6 +712,20 @@ permissions depend on guild roles, member roles, and channel overwrites, and
 each of those has a corresponding gateway event. Cache invalidation is
 therefore not a special mechanism — it is a few lines of event handlers.
 
+**A guild invalidation must reach everything the guild owns.** Channels are
+keyed by channel ID and members by `{guildId}:{userId}`, so neither can be
+found from the guild ID alone. The cache keeps a guild index — the entries
+of each kind that belong to a guild — and `invalidateGuild` walks it. Without
+it, a departed guild's channels held their `permission_overwrites` forever
+and `guildMembersChunk` cleared nothing. See
+[`fixes.md` §F16](./fixes.md#f16-invalidateguild-leaves-the-guilds-cached-channels-behind)
+and [§F17](./fixes.md#f17-invalidateguild-uses-a-member-key-that-is-never-written).
+
+The index is in memory. A cache backed by a shared store therefore only
+knows the entries this process wrote; a process that has just started
+invalidates by key and cannot reach another process's entries. That is
+acceptable for the caches the framework keeps, and it is worth stating.
+
 **Resolution algorithm.** To compute a member's effective permissions in a
 channel:
 
@@ -705,12 +753,19 @@ cache across pods if they want. A cache entry is keyed by kind and id, e.g.
 
 ## Stores
 
-A general `Store` interface (`get`, `set`, `delete`, `keys`) with memory,
-JSON file, and Redis implementations. Panel persistence is one consumer;
-command cooldowns and other framework state are others.
+A general `Store` interface (`get`, `set`, `delete`, `scan`, `has`, `clear`)
+with memory, JSON file, and Redis implementations. Panel persistence is one
+consumer; command cooldowns and other framework state are others.
 
 The interface is deliberately plain: TTL and compare-and-set semantics belong
 to the cache layer built on top of it, not to the store itself.
+
+Listing is **cursor-based** rather than a single full listing. A remote store
+must not be asked for its whole keyspace: Redis's `KEYS` is O(N) and blocks
+the server while it runs, while `SCAN` walks the keyspace in batches. The
+cache sweeps, clears and enforces its per-kind limits through the cursor, so
+nothing in the framework issues a blocking listing. See
+[`fixes.md` §F21](./fixes.md#f21-the-redis-store-uses-the-blocking-keys-command).
 
 ## Metrics
 
@@ -760,3 +815,10 @@ a test that only checks "an edit happened".
 This is a direct dividend of decision 15 and of doing the routing work
 ourselves. It is also why the widget engine must be careful to keep its
 inputs as plain data.
+
+**The tests are type-checked.** `npm run typecheck` covers `src`, the tests
+and the examples. Excluding the tests from `tsconfig` let two defects hide in
+plain sight: a component specification that was missing a field Discord
+requires, and a registration that accepted no state at all. Both were cast or
+defaulted past the compiler and only failed at runtime, so the suite now
+fails at the type level too.
