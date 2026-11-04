@@ -230,6 +230,167 @@ describe('argument validation', () => {
             resolveArgs(deriveSchemaFromBuilder(builder), resolver),
         ).toThrow(Error);
     });
+
+    describe('defects found in the second pass', () => {
+        it('does not demand the required options of a sibling subcommand', () => {
+            const command = new SlashCommandBuilder()
+                .setName('test')
+                .setDescription('Test')
+                .addSubcommand((sub) =>
+                    sub
+                        .setName('add')
+                        .setDescription('Add')
+                        .addStringOption((option) =>
+                            option
+                                .setName('url')
+                                .setDescription('URL')
+                                .setRequired(true),
+                        ),
+                )
+                .addSubcommand((sub) =>
+                    sub
+                        .setName('remove')
+                        .setDescription('Remove')
+                        .addStringOption((option) =>
+                            option
+                                .setName('id')
+                                .setDescription('ID')
+                                .setRequired(true),
+                        ),
+                );
+
+            const interaction = createInteraction(
+                createCommandInteraction('test', {
+                    options: [
+                        {
+                            name: 'add',
+                            type: ApplicationCommandOptionType.Subcommand,
+                            value: undefined,
+                            options: [
+                                {
+                                    name: 'url',
+                                    type: ApplicationCommandOptionType.String,
+                                    value: 'https://example.com',
+                                },
+                            ],
+                        },
+                    ],
+                }),
+                api.interactions,
+            );
+
+            const resolver = new CommandOptionResolver(interaction);
+
+            expect(
+                resolveArgs(deriveSchemaFromBuilder(command), resolver),
+            ).toEqual({ url: 'https://example.com' });
+        });
+
+        it('still demands the required options of the invoked subcommand', () => {
+            const command = new SlashCommandBuilder()
+                .setName('test')
+                .setDescription('Test')
+                .addSubcommand((sub) =>
+                    sub
+                        .setName('add')
+                        .setDescription('Add')
+                        .addStringOption((option) =>
+                            option
+                                .setName('url')
+                                .setDescription('URL')
+                                .setRequired(true),
+                        ),
+                );
+
+            const interaction = createInteraction(
+                createCommandInteraction('test', {
+                    options: [
+                        {
+                            name: 'add',
+                            type: ApplicationCommandOptionType.Subcommand,
+                            value: undefined,
+                            options: [],
+                        },
+                    ],
+                }),
+                api.interactions,
+            );
+
+            const resolver = new CommandOptionResolver(interaction);
+
+            expect(() =>
+                resolveArgs(deriveSchemaFromBuilder(command), resolver),
+            ).toThrow(Error);
+        });
+
+        it('demands a required option nested two levels deep', () => {
+            const command = new SlashCommandBuilder()
+                .setName('test')
+                .setDescription('Test')
+                .addSubcommandGroup((group) =>
+                    group
+                        .setName('admin')
+                        .setDescription('Admin')
+                        .addSubcommand((sub) =>
+                            sub
+                                .setName('run')
+                                .setDescription('Run')
+                                .addStringOption((option) =>
+                                    option
+                                        .setName('target')
+                                        .setDescription('Target')
+                                        .setRequired(true),
+                                ),
+                        ),
+                );
+
+            const interaction = createInteraction(
+                createCommandInteraction('test', {
+                    options: [
+                        {
+                            name: 'admin',
+                            type: ApplicationCommandOptionType.SubcommandGroup,
+                            value: undefined,
+                            options: [
+                                {
+                                    name: 'run',
+                                    type: ApplicationCommandOptionType.Subcommand,
+                                    value: undefined,
+                                    options: [],
+                                },
+                            ],
+                        },
+                    ],
+                }),
+                api.interactions,
+            );
+
+            const resolver = new CommandOptionResolver(interaction);
+
+            expect(() =>
+                resolveArgs(deriveSchemaFromBuilder(command), resolver),
+            ).toThrow(Error);
+        });
+
+        it('returns the focused option when the full form is asked for', () => {
+            const interaction = createInteraction(
+                createAutocompleteInteraction('tag', {
+                    name: 'name',
+                    type: ApplicationCommandOptionType.String,
+                    value: 'search',
+                }),
+                api.interactions,
+            );
+
+            const resolver = new CommandOptionResolver(interaction);
+
+            expect(resolver.getFocused()).toBe('search');
+            expect(resolver.getFocused(true)).toMatchObject({
+                name: 'name',
+                value: 'search',
+            });
+        });
+    });
 });
 
 describe('command manager', () => {

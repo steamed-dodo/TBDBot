@@ -7,7 +7,6 @@ import type {
     APIApplicationCommandInteractionDataOption,
     APIApplicationCommandInteractionDataSubcommandGroupOption,
     APIApplicationCommandInteractionDataSubcommandOption,
-    APIApplicationCommandOptionChoice,
     APIInteractionDataResolved,
 } from 'discord-api-types/v10';
 
@@ -337,30 +336,19 @@ export class CommandOptionResolver {
     /**
      * Reads the focused option of an autocomplete interaction.
      *
-     * @param getFull - Whether the full choice object is returned.
-     * @returns The focused value, or `null` when nothing is focused.
+     * @param getFull - Whether the focused option is returned instead of its value.
+     * @returns The focused value, the focused option, or `null` when nothing is focused.
      */
-    public getFocused(
-        getFull = false,
-    ): string | APIApplicationCommandOptionChoice | null {
+    public getFocused(getFull = false): string | CommandDataOption | null {
         if (!this.focused) {
             return null;
         }
 
-        if (!getFull) {
-            return (this.focused as { value: string }).value;
+        if (getFull) {
+            return this.focused;
         }
 
-        const focused = this.focused as {
-            value: string;
-            options?: APIApplicationCommandOptionChoice[];
-        };
-
-        const choice = focused.options?.find(
-            (option) => option.value === focused.value,
-        );
-
-        return choice ?? focused.value;
+        return (this.focused as { value: string }).value;
     }
 
     /**
