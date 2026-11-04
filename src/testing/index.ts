@@ -18,5 +18,10 @@ export {
     createUser,
 } from './factories';
 export type { InteractionFactoryOptions } from './factories';
-export { MockGateway, MockTransport, createMockRest } from './mock';
+export {
+    MockGateway,
+    MockTransport,
+    createMockRest,
+    describeRoute,
+} from './mock';
 export type { MockResponse, RecordedRequest } from './mock';

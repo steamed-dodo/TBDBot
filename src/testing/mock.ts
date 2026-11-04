@@ -9,6 +9,78 @@ import type { FrameworkGateway } from '../core/Client';
 type MakeRequest = NonNullable<RESTOptions['makeRequest']>;
 
 /**
+ * The Discord routes the mock transport knows about.
+ *
+ * The first pattern that matches wins, and its template becomes the route
+ * recorded on the request. Asserting on the route rather than on the method
+ * is what makes a test able to tell an ephemeral edit from a channel edit.
+ */
+const ROUTE_PATTERNS: readonly (readonly [RegExp, string])[] = [
+    [
+        /^\/interactions\/([^/]+)\/([^/]+)\/callback$/,
+        '/interactions/{interaction_id}/{interaction_token}/callback',
+    ],
+    [
+        /^\/webhooks\/([^/]+)\/([^/]+)\/messages\/(@original|[^/]+)$/,
+        '/webhooks/{application_id}/{interaction_token}/messages/{message_id}',
+    ],
+    [
+        /^\/webhooks\/([^/]+)\/([^/]+)$/,
+        '/webhooks/{application_id}/{interaction_token}',
+    ],
+    [/^\/channels\/([^/]+)\/messages$/, '/channels/{channel_id}/messages'],
+    [
+        /^\/channels\/([^/]+)\/messages\/([^/]+)$/,
+        '/channels/{channel_id}/messages/{message_id}',
+    ],
+    [
+        /^\/channels\/([^/]+)\/messages\/bulk-delete$/,
+        '/channels/{channel_id}/messages/bulk-delete',
+    ],
+    [
+        /^\/applications\/([^/]+)\/commands$/,
+        '/applications/{application_id}/commands',
+    ],
+    [
+        /^\/applications\/([^/]+)\/guilds\/([^/]+)\/commands$/,
+        '/applications/{application_id}/guilds/{guild_id}/commands',
+    ],
+    [/^\/guilds\/([^/]+)\/roles$/, '/guilds/{guild_id}/roles'],
+    [
+        /^\/guilds\/([^/]+)\/members\/([^/]+)$/,
+        '/guilds/{guild_id}/members/{user_id}',
+    ],
+    [/^\/channels\/([^/]+)$/, '/channels/{channel_id}'],
+    [/^\/users\/([^/]+)$/, '/users/{user_id}'],
+];
+
+/**
+ * Resolves a Discord route template from a request URL.
+ *
+ * @param url - The URL of the request.
+ * @returns The route template, or the path when no pattern matches.
+ */
+export function describeRoute(url: string): string {
+    let path: string;
+
+    try {
+        path = decodeURIComponent(new URL(url).pathname);
+    } catch {
+        path = url;
+    }
+
+    path = path.replace(/^\/api\/v\d+/, '');
+
+    for (const [pattern, template] of ROUTE_PATTERNS) {
+        if (pattern.test(path)) {
+            return template;
+        }
+    }
+
+    return path;
+}
+
+/**
  * A REST request recorded by the {@link MockTransport}.
  */
 export interface RecordedRequest {
@@ -17,6 +89,15 @@ export interface RecordedRequest {
 
     /** The URL of the request. */
     readonly url: string;
+
+    /**
+     * The Discord route of the request.
+     *
+     * This is the route *template* — `/channels/{channel_id}/messages` — not
+     * the concrete URL, so that a test can assert that the framework called
+     * the right endpoint rather than merely that it called something.
+     */
+    readonly route: string;
 
     /** The parsed body of the request, when there was one. */
     readonly body: unknown;
@@ -120,6 +201,7 @@ export class MockTransport {
         this.requests.push({
             method: init.method ?? 'GET',
             url,
+            route: describeRoute(url),
             body,
             headers,
         });
