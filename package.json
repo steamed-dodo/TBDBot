@@ -1,6 +1,7 @@
 {
     "name": "tbdbot",
     "version": "1.0.1",
+    "license": "MIT",
     "description": "TBDBot - a Discord bot framework built on @discordjs/core",
     "type": "module",
     "main": "./dist/index.js",
@@ -25,6 +26,7 @@
         "test:watch": "vitest",
         "prepack": "npm run build",
         "example:vertical-slice": "tsx examples/vertical-slice.ts",
+        "docs": "typedoc --entryPoints src/index.ts --out docs --tsconfig tsconfig.json",
         "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
         "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
     },
