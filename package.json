@@ -1,6 +1,6 @@
 {
     "name": "tbdbot",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "TBDBot â€” a Discord bot framework built on @discordjs/core",
     "type": "module",
     "main": "./dist/index.js",
