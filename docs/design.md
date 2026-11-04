@@ -315,6 +315,8 @@ isolation.
 | 25 | File attachments deferred | Capability exists in core; not worth carrying until the API settles |
 | 26 | Single package with one entry point for now | Subpath exports can be added without breaking the main export |
 | 27 | Package becomes `.../framework`; codename `TBDBot` | "utils" undersells the scope; the codename is a placeholder until publishing |
+| 28 | Inclusive cache tier uses `discord.js`'s own defaults | A user opting into the extra memory may reasonably expect parity; the defaults are read from discord.js's source |
+| 29 | Command arguments are runtime-validated plain objects; builder stays the source of truth | The builder's type does not accumulate options, so full compile-time inference is impossible without a parallel schema |
 
 ---
 
@@ -718,6 +720,91 @@ data alone, but the schema enables things the accessors cannot do:
 The schema is therefore a first-class part of the command definition, not an
 implementation detail of the resolver.
 
+#### Typed command arguments
+
+**Resolved: runtime-validated, with compile-time inference where the builder
+allows it.**
+
+There is a hard constraint here that determines the whole answer. The
+`SlashCommandBuilder` type does **not** carry the option list in its type.
+`addStringOption()` and friends return `this`, so the builder's type is the
+same regardless of which options were added. The options exist only in the
+runtime `options` array.
+
+That means a fully-typed `args` object cannot be inferred from the builder
+chain. If a user writes:
+
+```ts
+new SlashCommandBuilder()
+    .setName('ban')
+    .addUserOption(o => o.setName('target'))
+    .addIntegerOption(o => o.setName('days'))
+```
+
+there is no way for TypeScript to know that `target` is a user and `days` is
+an integer. The information is not in the type system. Any framework that
+promises fully-typed arguments from a builder chain is either using a
+different builder whose types *do* accumulate, or is doing type-level
+inference over a separately-declared schema.
+
+That gives three possible designs:
+
+| Design | DX | Runtime complexity |
+|---|---|---|
+| **A. Separate typed schema** — options declared as a typed object, builder generated from it | Best: `args.days` is `number`, not `number \| undefined` | Schema must be kept in sync with the builder, or the builder is generated from the schema |
+| **B. Builder only, runtime resolver** — `options.getInteger('days')` | Mediocre: every access is a method call returning `number \| null` | Lowest |
+| **C. Builder + runtime-validated typed args** — builder is the source of truth, args are validated at runtime and typed as best-effort | Good: `args.days` is `number \| undefined`, no method call | Moderate |
+
+**The chosen design is C**, with the resolver from the previous section
+available as the escape hatch for the cases it handles better.
+
+Concretely:
+
+- **The builder remains the source of truth.** The user writes a normal
+  `SlashCommandBuilder`. This matters for familiarity and because
+  `discord.js` users already know it.
+- **At registration time, the framework derives the schema** from
+  `builder.options` and stores it on the command definition.
+- **At invocation time, the framework validates the incoming options against
+  that schema** and produces a plain `args` object, keyed by option name.
+- **The `args` object's type is derived from the schema**, so
+  `args.days` is `number | undefined` and `args.target` is `string | undefined`
+  (a user option's value is a user ID string; the resolved user is in
+  `args.resolved`).
+
+The `args` object is a plain record, so it is trivially serializable, easy to
+log, and simple to test. It replaces the resolver for the common case.
+
+**Why not A.** A separately-declared typed schema would give better types, but
+it means the user declares options twice — once in the schema for the types,
+once in the builder for Discord — or the framework generates the builder from
+the schema, which means abandoning `SlashCommandBuilder` and maintaining a
+parallel builder with accumulating types. That is a significant chunk of work
+and a significant DX departure, for a benefit that only shows up in
+`strictNullChecks` on optional options.
+
+**Why not B alone.** `options.getInteger('days')` returning `number | null`
+on every access is exactly the friction the framework is trying to remove. It
+also forces the user to unwrap every option at every use site.
+
+**What C gives up.** Option types are not known at compile time, so
+`args.days` is `number | undefined` rather than `number`, and the framework
+cannot statically reject `args.days.foo`. The framework compensates with
+**runtime validation**, which is stronger than nothing and matches what
+Discord itself enforces — Discord rejects out-of-range values and unknown
+options before the interaction reaches the bot, so in practice the runtime
+schema is a second line of defence rather than the only one.
+
+**A pragmatic middle path for later.** A `defineCommand()` helper that takes
+an options object and generates the builder would give full type inference
+without abandoning `SlashCommandBuilder` — the framework would call
+`addStringOption` and friends internally. The option descriptor types would
+carry the type, and the handler's `args` type would be computed from them.
+This is worth doing if the runtime-validated approach proves frustrating in
+practice, but it is not required to ship a usable framework, so it is not in
+the initial scope. It is recorded here because it is the natural evolution
+and the schema infrastructure needed for it is already in place.
+
 #### Modals
 
 Modals are **in scope** and are part of the widget model from the start.
@@ -780,6 +867,64 @@ convenience or features:
 
 This tier is where the memory cost lives, so it is never enabled implicitly.
 The user chooses what goes in it.
+
+**Tier 2 defaults match `discord.js`.** A user who opts into the inclusive
+tier is explicitly accepting the extra memory, and at that point they may
+reasonably expect parity with `discord.js` — so the defaults are `discord.js`'s
+defaults, read from `discord.js/src/util/Options.js` and
+`discord.js/src/util/Sweepers.js`:
+
+| Kind | `discord.js` default | Meaning |
+|---|---|---|
+| Messages | `MessageManager: 200` | Max 200 cached messages per channel, as a `LimitedCollection` |
+| Threads | `interval: 3600`, `lifetime: 14400` | Swept hourly, dropping threads archived more than 4 hours ago |
+| Invites | `lifetime: 14400` | Expired invites dropped after 4 hours |
+| Messages (sweeper) | `lifetime: 3600` | Messages swept after 1 hour of inactivity, when a message sweeper is enabled |
+
+The rest of `discord.js`'s swept kinds (`bans`, `emojis`, `guildMembers`,
+`presences`, `stickers`, `voiceStates`, `reactions`, `applicationCommands`,
+`autoModerationRules`, `entitlements`, `stageInstances`, `threadMembers`,
+`users`) are **not swept by default** — `discord.js` only enables the
+`threads` sweeper out of the box, and leaves everything else in the cache
+indefinitely until the process exits.
+
+That last detail is worth being explicit about, because it changes the
+shape of the default. `discord.js`'s effective behaviour is:
+
+- **Bounded by count:** messages, 200 per channel.
+- **Bounded by age:** threads (4h), invites (4h).
+- **Unbounded:** everything else — guilds, channels, members, users, presences
+  — retained for the lifetime of the process.
+
+So "parity with `discord.js`" does **not** mean "every kind has a TTL". It
+means the same per-kind limits where `discord.js` has them, and indefinite
+retention where it does not. The framework should match this exactly rather
+than inventing a uniform TTL policy, because a user comparing behaviour
+against `discord.js` would otherwise find the difference surprising.
+
+The practical consequence: the inclusive tier's memory footprint is bounded
+by the number of guilds, channels, and members the bot is in, not by any
+time-based policy. That is the trade the user is opting into, and the
+framework should say so plainly in the docs rather than implying the
+inclusive tier is self-limiting.
+
+**TTL support.** Where a kind has a lifetime, the framework applies it. TTLs
+are per-kind and configurable, and the defaults are the table above.
+
+**Eviction.** Two mechanisms, matching `discord.js`:
+
+- **Count-based**, for kinds with a maximum size (messages: 200 per
+  channel). This is an LRU-style bounded collection, not a sweep.
+- **Age-based**, for kinds with a lifetime. `discord.js` sweeps on an
+  interval (hourly for threads) and drops items whose lifetime has elapsed.
+  The framework can expire on read instead, which avoids a periodic timer,
+  or sweep on an interval for parity. Sweeping on an interval is closer to
+  `discord.js` behaviour and keeps memory genuinely bounded rather than
+  relying on access patterns, so the framework should sweep.
+
+Where the sweep runs and how long it takes to reclaim memory is a
+framework-internal detail; the observable contract is that a cached item
+lives no longer than its lifetime plus one sweep interval.
 
 **Invalidation.** The event router's typed events drive cache invalidation
 directly, which is the natural consequence of building the event layer:
@@ -916,26 +1061,20 @@ the menu and panel work has validated the model.
 ## Open questions
 
 All of the previously open questions are now resolved and folded into the
-design above. Two follow-ups remain, neither of which blocks the foundation
-work:
-
-1. **Cache TTLs and bounds.** The two cache tiers are defined, but the
-   specific TTL for each entry kind, and the eviction policy when the
-   inclusive tier is enabled, have not been chosen. Memory is the point of
-   the exercise, so these need real numbers rather than a default.
-
-2. **Typed command arguments.** The option schema is derived from the builder
-   and the typed resolver is settled, but whether commands receive a
-   fully-typed arguments object (derived from the schema at the type level)
-   or a runtime-validated one is still open. The former is a significant
-   TypeScript exercise involving conditional types over the option tree.
-
-Smaller items that can be settled as they are encountered:
+design above. The remaining items are small enough to settle as they are
+encountered during implementation:
 
 - Whether the `Store` interface needs TTL and CAS semantics, or whether
-  those belong to the cache layer on top of it.
+  those belong to the cache layer on top of it. Given that the inclusive tier
+  needs per-kind TTLs, this probably belongs on the cache layer, with the
+  `Store` interface staying a plain key-value contract.
 - The exact shape of the `metrics.handler()` response, and whether it should
   serve anything beyond `/metrics` (a health check, for instance).
+- Whether a `defineCommand()` helper that generates a builder from a typed
+  option descriptor is worth building. The schema infrastructure it needs is
+  already in place; the question is whether the DX gain justifies the extra
+  surface.
 - Whether the framework should offer a `SlashCommandBuilder` variant that
   takes a typed schema directly, rather than deriving the schema from a
-  hand-written builder.
+  hand-written builder. This is the same question as the one above, and
+  should be answered together.
