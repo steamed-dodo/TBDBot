@@ -103,7 +103,7 @@ export class PermissionsBitField {
         }
 
         if (typeof permission === 'string') {
-            if (permission in PermissionFlagsBits) {
+            if (Object.hasOwn(PermissionFlagsBits, permission)) {
                 return PermissionFlagsBits[
                     permission as keyof typeof PermissionFlagsBits
                 ];

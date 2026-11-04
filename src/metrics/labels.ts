@@ -118,7 +118,7 @@ export function assertLabelsMatch(
     }
 
     for (const name of labelNames) {
-        if (!(name in labels)) {
+        if (!Object.hasOwn(labels, name)) {
             throw new TypeError(`Missing label "${name}".`);
         }
     }
