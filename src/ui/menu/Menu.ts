@@ -326,6 +326,9 @@ export class Menu implements Widget<MenuState> {
             messageId: created.id,
         };
 
+        this.messageId = created.id;
+        this.channelId = channelId;
+
         await this.register(router);
         this.startTimeout();
 

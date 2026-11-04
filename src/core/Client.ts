@@ -122,6 +122,8 @@ export class FrameworkClient extends TypedEventEmitter {
 
     private readyPromise: Promise<ReadyInfo> | null = null;
 
+    private readyInfo: ReadyInfo | null = null;
+
     private resolveReady: ((info: ReadyInfo) => void) | null = null;
 
     private rejectReady: ((error: Error) => void) | null = null;
@@ -157,6 +159,7 @@ export class FrameworkClient extends TypedEventEmitter {
 
         this.on('ready', (info: ReadyInfo) => {
             this.ready = true;
+            this.readyInfo = info;
             this.applicationId = info.applicationId;
             this.resolveReady?.(info);
             this.resolveReady = null;
@@ -254,14 +257,8 @@ export class FrameworkClient extends TypedEventEmitter {
      * @returns A promise resolving with the ready information.
      */
     public whenReady(): Promise<ReadyInfo> {
-        if (this.ready) {
-            return Promise.resolve({
-                applicationId: this.applicationId ?? '',
-                sessionId: null,
-                shardId: 0,
-                user: null,
-                raw: undefined as never,
-            });
+        if (this.readyInfo) {
+            return Promise.resolve(this.readyInfo);
         }
 
         if (!this.readyPromise) {
