@@ -4,6 +4,7 @@ import type {
     APIGuildMember,
     APIInteractionDataResolved,
     APIMessageTopLevelComponent,
+    APIModalInteractionResponseCallbackComponent,
     APIUser,
     ApplicationCommandOptionType,
     ComponentType,
@@ -72,7 +73,7 @@ export interface ModalResponseBody {
     readonly title: string;
 
     /** Component rows displayed inside the modal. */
-    readonly components: readonly APIMessageTopLevelComponent[];
+    readonly components: readonly APIModalInteractionResponseCallbackComponent[];
 }
 
 /**

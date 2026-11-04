@@ -14,6 +14,7 @@ import type {
 } from 'discord-api-types/v10';
 import { ComponentType, InteractionType } from 'discord-api-types/v10';
 
+import { parsePermissions } from '../permissions/bitfield';
 import type {
     AutocompleteResponseBody,
     Interaction,
@@ -22,43 +23,7 @@ import type {
     ModalResponseBody,
 } from './types';
 
-/**
- * Parses a permission bitfield that Discord may send as a string or a number.
- *
- * Discord's v10 API returns permission bitfields as strings, and 64-bit
- * permission values exceed `Number.MAX_SAFE_INTEGER`, so every permission
- * value is normalised to `bigint` here.
- *
- * @param value - The raw permission value.
- * @returns The permission bitfield as a `bigint`.
- */
-export function parsePermissions(
-    value: string | number | bigint | null | undefined,
-): bigint {
-    if (value === null || value === undefined) {
-        return 0n;
-    }
-
-    if (typeof value === 'bigint') {
-        return value;
-    }
-
-    if (typeof value === 'number') {
-        return BigInt(Math.trunc(value));
-    }
-
-    const trimmed = value.trim();
-
-    if (trimmed === '') {
-        return 0n;
-    }
-
-    try {
-        return BigInt(trimmed);
-    } catch {
-        return 0n;
-    }
-}
+export { parsePermissions };
 
 function isComponentInteraction(raw: APIInteraction): raw is APIMessageComponentInteraction {
     return raw.type === InteractionType.MessageComponent;
