@@ -169,19 +169,22 @@ function resolveField(
     loaded: readonly { name: string; values: Record<string, unknown> }[],
 ): FieldResult {
     const lookup = field.env ?? key;
+    const candidates = [lookup, lookup.toUpperCase()];
 
     for (const source of loaded) {
-        if (!(lookup in source.values)) {
-            continue;
+        for (const candidate of candidates) {
+            if (!(candidate in source.values)) {
+                continue;
+            }
+
+            const raw = source.values[candidate];
+
+            if (raw === undefined || raw === null || raw === '') {
+                continue;
+            }
+
+            return coerce(key, field, raw, source.name);
         }
-
-        const raw = source.values[lookup];
-
-        if (raw === undefined || raw === null || raw === '') {
-            continue;
-        }
-
-        return coerce(key, field, raw, source.name);
     }
 
     if (field.required) {

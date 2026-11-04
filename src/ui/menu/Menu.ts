@@ -631,6 +631,8 @@ export class Menu implements Widget<MenuState> {
             delete this.answers[abandoned];
         }
 
+        delete this.answers[previous];
+
         await context.interaction.deferUpdate();
 
         this.currentStepId = previous;

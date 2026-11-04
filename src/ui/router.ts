@@ -418,6 +418,7 @@ export class WidgetRouter {
 
         if (queue) {
             queue.shift();
+            this.queuedCount -= 1;
 
             if (queue.length === 0) {
                 this.queues.delete(oldestKey);
