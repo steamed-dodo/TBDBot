@@ -95,4 +95,62 @@ describe('cache', () => {
 
         expect(await store.get('roles:guild-1')).toBeUndefined();
     });
+
+    describe('defects found in the second pass', () => {
+        it('clears the channels of a guild', async () => {
+            const cache = new Cache({ tier: 'inclusive', autoSweep: false });
+
+            await cache.set('roles', 'guild-1', { id: 'guild-1' });
+            await cache.set('channel', 'channel-1', {
+                id: 'channel-1',
+                guild_id: 'guild-1',
+                permission_overwrites: [],
+            });
+            await cache.set('channel', 'channel-2', {
+                id: 'channel-2',
+                guild_id: 'guild-2',
+                permission_overwrites: [],
+            });
+
+            await cache.invalidateGuild('guild-1');
+
+            expect(await cache.get('roles', 'guild-1')).toBeUndefined();
+            expect(await cache.get('channel', 'channel-1')).toBeUndefined();
+            expect(await cache.get('channel', 'channel-2')).toBeDefined();
+        });
+
+        it('clears the members of a guild', async () => {
+            const cache = new Cache({ tier: 'inclusive', autoSweep: false });
+
+            await cache.set('guildMember', 'guild-1:user-1', { id: 'user-1' });
+            await cache.set('guildMember', 'guild-1:user-2', { id: 'user-2' });
+            await cache.set('guildMember', 'guild-2:user-3', { id: 'user-3' });
+
+            await cache.invalidateGuild('guild-1');
+
+            expect(
+                await cache.get('guildMember', 'guild-1:user-1'),
+            ).toBeUndefined();
+            expect(
+                await cache.get('guildMember', 'guild-1:user-2'),
+            ).toBeUndefined();
+            expect(
+                await cache.get('guildMember', 'guild-2:user-3'),
+            ).toBeDefined();
+        });
+
+        it('drops a deleted channel from the guild index', async () => {
+            const cache = new Cache({ tier: 'inclusive', autoSweep: false });
+
+            await cache.set('channel', 'channel-1', {
+                id: 'channel-1',
+                guild_id: 'guild-1',
+            });
+
+            await cache.delete('channel', 'channel-1');
+            await cache.invalidateGuild('guild-1');
+
+            expect(await cache.get('channel', 'channel-1')).toBeUndefined();
+        });
+    });
 });

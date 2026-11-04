@@ -3,6 +3,10 @@
  *
  * The interface is deliberately plain: TTL and compare-and-set semantics
  * belong to the cache layer built on top of it, not to the store itself.
+ *
+ * Listing is cursor-based rather than a single full listing, because a
+ * full listing of a large keyspace is the wrong shape for a remote store:
+ * Redis's `KEYS` blocks the server, while `SCAN` does not.
  */
 export interface Store<TValue = unknown> {
     /**
@@ -29,11 +33,15 @@ export interface Store<TValue = unknown> {
     delete(key: string): Promise<void>;
 
     /**
-     * Lists every key in the store.
+     * Lists keys in batches.
      *
-     * @returns The stored keys.
+     * Pass `'0'` to start, and keep calling with the returned cursor until
+     * it comes back as `'0'` again.
+     *
+     * @param cursor - The cursor returned by the previous call.
+     * @returns A batch of keys and the cursor to continue from.
      */
-    keys(): Promise<string[]>;
+    scan(cursor: string): Promise<{ keys: string[]; cursor: string }>;
 
     /**
      * Checks whether a key exists.
@@ -50,8 +58,12 @@ export interface Store<TValue = unknown> {
 /**
  * A minimal Redis-compatible client.
  *
- * Only the four commands the store needs are required, which keeps the
+ * Only the commands the store needs are required, which keeps the
  * framework free of a hard dependency on a particular Redis client.
+ *
+ * `scan` is the cursor-based sibling of `KEYS`: an adapter should issue
+ * `SCAN <cursor> MATCH <match> COUNT <count>` and return the new cursor and
+ * the batch of keys. It must not fall back to `KEYS`.
  */
 export interface RedisLikeClient {
     /** Reads a string value. */
@@ -63,6 +75,17 @@ export interface RedisLikeClient {
     /** Deletes one or more keys. */
     del(key: string): Promise<unknown>;
 
-    /** Lists the keys matching a pattern. */
-    keys(pattern: string): Promise<string[]>;
+    /**
+     * Iterates the keyspace without blocking the server.
+     *
+     * @param cursor - The cursor returned by the previous call.
+     * @param match - The pattern to match.
+     * @param count - A hint for how much work to do per call.
+     * @returns The next cursor and the batch of matching keys.
+     */
+    scan(
+        cursor: string,
+        match: string,
+        count: number,
+    ): Promise<[cursor: string, keys: string[]]>;
 }
