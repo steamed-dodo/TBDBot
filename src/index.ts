@@ -1,3 +1,4 @@
-export * from './menu/index';
-export * from './panel/index';
-export * from './wizard/index';
+export * from './api/index';
+export * from './core/index';
+export * from './interaction/index';
+export * from './ui/index';

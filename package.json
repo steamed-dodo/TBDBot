@@ -1,41 +1,46 @@
 {
-  "name": "@my-lib/utils",
-  "version": "0.1.1",
-  "description": "reusable utilities for discord.js",
-  "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+    "name": "@my-lib/utils",
+    "version": "0.2.0",
+    "description": "TBDBot — a Discord bot framework built on @discordjs/core",
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "clean": "rimraf dist",
+        "build": "npm run clean && npm run build:js && npm run build:types",
+        "build:js": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js",
+        "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
+        "dev": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js --watch",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "prepack": "npm run build",
+        "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+        "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
+    },
+    "dependencies": {
+        "@discordjs/builders": "^1.15.0",
+        "@discordjs/core": "^2.7.0",
+        "@discordjs/rest": "^2.6.3",
+        "@discordjs/ws": "^2.0.4",
+        "discord-api-types": "^0.38.57"
+    },
+    "devDependencies": {
+        "@types/node": "^24.0.0",
+        "esbuild": "^0.28.2",
+        "prettier": "^3.9.10",
+        "rimraf": "^6.1.3",
+        "tsx": "^4.23.15",
+        "typescript": "^7.0.2",
+        "vitest": "^5.0.5"
     }
-  },
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "clean": "rimraf dist",
-    "build": "npm run clean && npm run build:js && npm run build:types",
-    "build:js": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js",
-    "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
-    "dev": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js --watch",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "prepack": "npm run build",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\""
-  },
-  "peerDependencies": {
-    "discord.js": "^14.27.0"
-  },
-  "devDependencies": {
-    "esbuild": "^0.28.2",
-    "prettier": "^3.9.10",
-    "rimraf": "^6.1.3",
-    "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
-  }
 }
