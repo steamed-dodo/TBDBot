@@ -244,4 +244,4 @@ npm run build
 
 ## License
 
-No license has been chosen yet. The package is private for now.
+[MIT](LICENSE)
