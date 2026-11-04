@@ -13,7 +13,14 @@ This is the entry point. The other documents hold the detail:
 | [`discord-notes.md`](./discord-notes.md) | Verified facts about the Discord API and `@discordjs/core` | Stable; a reference |
 | [`modules.md`](./modules.md) | Per-module implementation detail | Changes most |
 | [`spike-notes.md`](./spike-notes.md) | The answers to the integration questions unit tests cannot answer | Stable; a reference |
-| [`fixes.md`](./fixes.md) | The problems found in this design after the fact, and what was done about each | Historical |
+| [`fixes.md`](./fixes.md) | The problems found in this design after the fact, and what was done about each; plus a second pass of defects found in the implementation | Historical for F1–F9; **open** for F10–F21 |
+
+A second pass over the implementation found twelve further defects, recorded
+as F10–F21 in
+[`fixes.md` § Second pass](./fixes.md#second-pass-defects-found-in-the-implementation).
+Several of them contradict rules stated in this document — the access policy
+does not cover custom actions (F19), and the router acknowledges an
+interaction after the handler rather than before it (F13).
 
 This document replaces the earlier `docs/adapter-plan.md`, which proposed a
 `DiscordAdapter` interface with parallel `discord.js` and `@discordjs/core`

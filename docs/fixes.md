@@ -9,8 +9,9 @@ expensive to fix in code.
 
 **Status of each item:**
 
-All nine items have been applied. The commit that applied each one is named
-in the table, and the design documents record where it landed — see
+The first nine were found while reviewing the *design* and have all been
+applied. The commit that applied each one is named in the table, and the
+design documents record where it landed — see
 [design.md § Fixes applied](./design.md#fixes-applied).
 
 | ID | Severity | Status | Applied in |
@@ -24,6 +25,10 @@ in the table, and the design documents record where it landed — see
 | [F7](#f7-the-event-router-scope-is-undefined) | Medium | Applied | `b124c7d` |
 | [F8](#f8-persistent-widgets-should-not-hold-a-message-object) | Low | Applied | `ce66527` |
 | [F9](#f9-design-doc-is-long-and-hard-to-navigate) | Low | Applied | `3a5333b` |
+
+A **second pass** over the implementation found twelve further defects
+(F10–F21). Those are all open and are documented in
+[Second pass](#second-pass-defects-found-in-the-implementation).
 
 ---
 
@@ -641,3 +646,882 @@ afterwards, in the order the work turned out to depend on:
 
 The dependency order held: the state model was settled before the tests were
 written, and the tests were written before the expiry was implemented.
+
+---
+
+# Second pass: defects found in the implementation
+
+The first nine items were found while reviewing the *design*. The items below
+were found by reading the *implementation* once it existed, and each one was
+reproduced with an executable test before being written down. The evidence in
+each entry is the captured output of that test.
+
+**Status: all open.** None of these have been fixed yet.
+
+| ID | Severity | Area | Summary |
+|---|---|---|---|
+| [F10](#f10-buttons-without-a-style-render-an-invalid-payload) | **High** | `ui/render` | A button with no explicit `style` renders without the `style` field, which Discord requires. The message is rejected with a 400. |
+| [F11](#f11-the-reserved-action-prefix-can-be-spoofed) | **High** | `ui/ids` | The reserved marker is only validated by the `button()`/`select()` helpers, so a hand-built spec can mint a custom id that impersonates a navigation action. |
+| [F12](#f12-permissionbitfield-resolve-leaks-objectprototype-keys) | Medium | `permissions` | `resolve('constructor')` returns a function rather than a `bigint`, because the lookup uses `in` and therefore walks the prototype chain. |
+| [F13](#f13-the-router-acknowledges-the-interaction-after-the-handler) | **High** | `ui/router` | The router defers *after* the handler runs, so a slow handler misses the three-second deadline. The spike notes state the opposite was intended. |
+| [F14](#f14-required-options-of-sibling-subcommands-are-cross-checked) | **High** | `commands/args` | A command with two subcommands that each have a required option always throws, whichever subcommand was used. |
+| [F15](#f15-required-options-nested-two-levels-deep-are-never-checked) | Medium | `commands/args` | Required options inside a subcommand inside a subcommand group are never enforced. |
+| [F16](#f16-invalidateguild-leaves-the-guilds-cached-channels-behind) | **High** | `cache` | `invalidateGuild` does not clear the channel cache, so stale permission overwrites survive and channels leak. |
+| [F17](#f17-invalidateguild-uses-a-member-key-that-is-never-written) | Medium | `cache` | `invalidateGuild` deletes `guildMember:{guildId}`, but members are stored as `guildMember:{guildId}:{userId}`. The deletion never matches. |
+| [F18](#f18-getfocusedtrue-never-returns-the-focused-option) | Low | `commands/options` | `getFocused(true)` returns the bare value; the `getFull` parameter has no effect. |
+| [F19](#f19-the-access-policy-does-not-cover-custom-actions) | **High** | `ui/menu` | The `access` policy is checked for navigation but not for custom action handlers, so anyone can trigger a step's own action. |
+| [F20](#f20-register-accepts-a-missing-state-and-stores-undefined) | Medium | `ui/router` | `register(widget)` without a state stores `undefined`, which crashes later with an unrelated-looking error. |
+| [F21](#f21-the-redis-store-uses-the-blocking-keys-command) | Medium | `store` | `RedisStore.keys()` issues Redis `KEYS`, which blocks the server, and the cache sweeps the whole keyspace on a timer. |
+
+The proof tests used to produce the evidence below were scratch files. They are
+reproduced inline so that each finding can be re-checked independently.
+
+---
+
+## F10: Buttons without a style render an invalid payload
+
+**Severity: high. Every button created without an explicit style produces a
+message Discord rejects.**
+
+### The problem
+
+`button()` makes `style` optional:
+
+```ts
+export function button(
+    action: string,
+    label: string,
+    options: { readonly style?: ComponentButtonStyle; ... } = {},
+): ButtonSpec
+```
+
+and `renderButton()` omits the field when it is absent:
+
+```ts
+return {
+    type: ComponentType.Button,
+    custom_id: customId,
+    label: spec.label,
+    ...(spec.style === undefined ? {} : { style: spec.style }),
+    ...(spec.emoji === undefined ? {} : { emoji: toEmoji(spec.emoji) }),
+    ...(spec.disabled === undefined ? {} : { disabled: spec.disabled }),
+} as APIButtonComponent;
+```
+
+But Discord requires it. `APIButtonBase` declares `style: Style` as a
+**required** field:
+
+```ts
+export interface APIButtonBase<Style extends ButtonStyle> {
+    style: Style;
+    disabled?: boolean;
+}
+```
+
+The `as APIButtonComponent` cast hides the mismatch from the compiler — the
+object literal is missing a required property, and the cast suppresses the
+error rather than fixing it.
+
+### Evidence
+
+```
+rendered button: {"type":2,"custom_id":"ui:widget1:act","label":"Press"}
+has style? false
+```
+
+A message containing that button is rejected by Discord with a 400 for a
+missing `style`.
+
+### The fix
+
+**Make `style` required in the framework's own types and give it a default.**
+
+The natural default is `ButtonStyle.Primary` (value 1), which is what the
+Discord documentation shows as the primary button style. Two changes:
+
+1. `ButtonSpec.style` becomes required, and `button()` defaults it:
+
+   ```ts
+   export interface ButtonSpec {
+       readonly type: 'button';
+       readonly action: string;
+       readonly label: string;
+       readonly style: ComponentButtonStyle;   // no longer optional
+       ...
+   }
+   ```
+
+2. `renderButton()` always emits the field, and the `as APIButtonComponent`
+   cast can be dropped:
+
+   ```ts
+   return {
+       type: ComponentType.Button,
+       custom_id: customId,
+       label: spec.label,
+       style: spec.style,
+       ...(spec.emoji === undefined ? {} : { emoji: toEmoji(spec.emoji) }),
+       ...(spec.disabled === undefined ? {} : { disabled: spec.disabled }),
+   };
+   ```
+
+The same cast appears in `renderSelect()`; it should be checked for the same
+class of problem.
+
+---
+
+## F11: The reserved action prefix can be spoofed
+
+**Severity: high. The design states the split "cannot be spoofed"; it can.**
+
+### The problem
+
+The design's action scheme relies on a reserved marker (`~`) that "cannot
+appear in a user-defined action, so the split between the reserved part and
+the user part is unambiguous and cannot be spoofed."
+
+The marker is validated in exactly one place — the convenience helpers:
+
+```ts
+export function button(action: string, label: string, options = {}): ButtonSpec {
+    assertValidAction(action);
+    ...
+}
+```
+
+But `ButtonSpec` and `SelectSpec` are plain interfaces, so a user can write
+the object literal directly. `renderButton()` then calls `createCustomId()`,
+which validates the namespace and the widget id but **not** the action:
+
+```ts
+export function createCustomId(namespace, widgetId, action): string {
+    assertValidNamespace(namespace);
+    // widget id checked
+    const customId = `${namespace}:${widgetId}:${action}`;
+    ...
+}
+```
+
+The result is a custom id whose action segment starts with the reserved
+marker. On the way back in, `splitAction()` treats it as reserved and routes
+it to `onNavigation` instead of `onAction`.
+
+### Evidence
+
+```
+spoofed custom id: ui:widget1:~spoofed
+navigation calls: 1
+action calls: 0
+```
+
+The user's action never reaches their own handler; it is silently
+reinterpreted as framework navigation.
+
+### The fix
+
+**Validate the action at the point where the custom id is minted**, not only
+in the convenience helper. `createCustomId()` is the single choke point every
+framework-rendered component passes through, so the check belongs there:
+
+```ts
+export function createCustomId(namespace, widgetId, action): string {
+    assertValidNamespace(namespace);
+    // ... widget id checks ...
+
+    assertValidAction(action);   // <-- add
+
+    const customId = `${namespace}:${widgetId}:${action}`;
+    ...
+}
+```
+
+`assertValidAction` must accept the reserved form as well, since the
+framework itself mints `~next`, `~previous` and so on. The simplest rule is
+that an action may contain the marker **only** as its first character:
+
+```ts
+export function assertValidAction(action: string): void {
+    if (typeof action !== 'string' || action.length === 0) {
+        throw new TypeError('Action must be a non-empty string.');
+    }
+
+    if (action.includes(RESERVED_ACTION_PREFIX)) {
+        // The framework reserves a leading marker; a user action may not
+        // contain one anywhere, because a hand-built spec bypasses the
+        // helper that checks it.
+        throw new TypeError(...);
+    }
+}
+```
+
+That keeps the rule in one place and makes it impossible to bypass by
+constructing a spec literal.
+
+---
+
+## F12: `PermissionsBitField.resolve` leaks `Object.prototype` keys
+
+**Severity: medium. A user-supplied permission name can produce a
+non-`bigint` bitfield.**
+
+### The problem
+
+`resolve()` looks a string up in the flags table with `in`:
+
+```ts
+if (typeof permission === 'string') {
+    if (permission in PermissionFlagsBits) {
+        return PermissionFlagsBits[permission as keyof typeof PermissionFlagsBits];
+    }
+    return parsePermissions(permission);
+}
+```
+
+`in` walks the prototype chain, and `PermissionFlagsBits` is a plain object
+literal, so every `Object.prototype` member matches. `'constructor'`,
+`'toString'`, `'valueOf'` and `'hasOwnProperty'` all satisfy the check and
+resolve to a *function* rather than a permission bit.
+
+The result is a `PermissionsBitField` whose `bits` is a function, and every
+bitwise operation on it then throws.
+
+### Evidence
+
+```
+typeof resolve("constructor"): function
+typeof field.bitfield: function
+constructor -> function
+toString -> function
+valueOf -> function
+hasOwnProperty -> function
+```
+
+and `new PermissionsBitField('constructor').has('SendMessages')` throws
+`TypeError: Cannot mix BigInt and other types`.
+
+### The fix
+
+**Use `Object.hasOwn` instead of `in`.** It checks own properties only, so
+prototype members no longer match:
+
+```ts
+if (typeof permission === 'string') {
+    if (Object.hasOwn(PermissionFlagsBits, permission)) {
+        return PermissionFlagsBits[permission as keyof typeof PermissionFlagsBits];
+    }
+    return parsePermissions(permission);
+}
+```
+
+`Object.hasOwn` is available from Node 16.9, and the framework targets
+Node 20.
+
+The same `in`-on-a-plain-object pattern should be checked elsewhere in the
+codebase.
+
+---
+
+## F13: The router acknowledges the interaction after the handler
+
+**Severity: high. A handler that takes more than three seconds fails, and
+the framework cannot tell the user why.**
+
+### The problem
+
+The spike notes record the intended behaviour explicitly:
+
+> The widget engine has to defer before it dispatches. The first draft
+> deferred inside the menu's transition, which meant a custom widget could
+> forget to. **Deferring in the router, before the action handler runs, is
+> the only place it cannot be forgotten.**
+
+The router does the opposite. `dispatch()` runs the handler first and only
+then acknowledges:
+
+```ts
+try {
+    const { reserved, name } = splitAction(action);
+
+    if (reserved) {
+        await registration.widget.onNavigation?.(name, context);
+    } else {
+        await registration.widget.onAction?.(action, context);
+    }
+} catch (error) {
+    await safeReply(interaction, 'Something went wrong while handling that action.');
+    throw error;
+}
+
+await acknowledgeIfNeeded(interaction);   // <-- after the handler
+```
+
+`Flow.onNavigation()` does defer first, so menus and wizards are protected —
+but only because the subclass remembers to. `Flow.onAction()` does not defer
+at all, and a custom widget registered directly with the router never gets a
+deferral. The guarantee the spike identified as "the only place it cannot be
+forgotten" is therefore not in place.
+
+### Evidence
+
+```
+responded while handler ran: false
+requests: [ 'POST /interactions/{interaction_id}/{interaction_token}/callback' ]
+```
+
+The interaction was still unacknowledged while the handler ran.
+
+### The fix
+
+**Defer in the router, before dispatching**, and drop the now-redundant
+defer from `Flow.onNavigation()`:
+
+```ts
+private async dispatch(registration, action, interaction): Promise<void> {
+    // Acknowledge first: the interaction token is only valid for three
+    // seconds, and the handler may take longer than that.
+    await acknowledgeIfNeeded(interaction);
+
+    const context = { ... };
+
+    try {
+        const { reserved, name } = splitAction(action);
+        if (reserved) {
+            await registration.widget.onNavigation?.(name, context);
+        } else {
+            await registration.widget.onAction?.(action, context);
+        }
+    } catch (error) {
+        await safeReply(interaction, 'Something went wrong while handling that action.');
+        throw error;
+    }
+}
+```
+
+`acknowledgeIfNeeded` already checks `interaction.responded`, so a handler
+that wants to reply itself is unaffected — the router simply acknowledges
+first when the handler has not.
+
+`Flow.onNavigation()`'s own `deferUpdate()` becomes redundant but harmless;
+it can stay or be removed.
+
+---
+
+## F14: Required options of sibling subcommands are cross-checked
+
+**Severity: high. Any command with two subcommands that each declare a
+required option is completely unusable.**
+
+### The problem
+
+`collectRequired()` gathers required options from the whole schema tree
+without regard to which subcommand was invoked:
+
+```ts
+function collectRequired(schema: CommandSchema): OptionSchema[] {
+    const required: OptionSchema[] = [];
+
+    for (const option of schema.options) {
+        if (option.required) required.push(option);
+        if (option.options) {
+            for (const nested of option.options) {
+                if (nested.required) required.push(nested);
+            }
+        }
+    }
+
+    return required;
+}
+```
+
+`resolveArgs()` then requires *all* of them to be present:
+
+```ts
+for (const option of collectRequired(schema)) {
+    if (!(option.name in args)) {
+        throw new Error(`Required option "${option.name}" is missing for command "${schema.name}".`);
+    }
+}
+```
+
+`args` only contains the options of the subcommand that was actually
+invoked, so the required options of the *other* subcommand are always
+missing.
+
+### Evidence
+
+A command with two subcommands, `add` (requires `url`) and `remove`
+(requires `id`):
+
+```
+thrown: Required option "id" is missing for command "test".
+```
+
+The user invoked `add` and supplied `url`. The framework demanded `id`,
+which belongs to `remove`. The command can never succeed.
+
+### The fix
+
+**Only require the options of the subcommand that was invoked.**
+
+The resolver already knows which subcommand was used — `CommandOptionResolver`
+exposes `getSubcommand()` and `leafOptions`. The required check should be
+scoped to the same subtree the arguments came from.
+
+The cleanest fix is to derive the required set from the *invoked* path rather
+than the whole schema:
+
+```ts
+function collectRequiredFor(schema: CommandSchema, options: CommandOptionResolver): OptionSchema[] {
+    // Walk the schema alongside the resolver's hoisted subcommand so that
+    // only the invoked branch contributes required options.
+}
+```
+
+Concretely: find the schema node matching `options.getSubcommand()`, then
+collect its required options (recursively, which also fixes F15).
+
+---
+
+## F15: Required options nested two levels deep are never checked
+
+**Severity: medium. The required check is silently skipped for the deepest
+nesting level.**
+
+### The problem
+
+`collectRequired()` walks exactly two levels: `schema.options`, then
+`option.options`. A subcommand group contains subcommands, which contain
+options:
+
+```
+schema.options[0]           = subcommand group
+schema.options[0].options[0] = subcommand
+schema.options[0].options[0].options[0] = the actual option   <-- never reached
+```
+
+So a required option inside a group is never collected, and never checked.
+
+Note the inconsistency with `findSchemaOption()`, which recurses without
+limit — the same file resolves options to arbitrary depth but validates
+requiredness to two.
+
+### Evidence
+
+A group containing a subcommand `run` with a required option `target`,
+invoked with that option missing:
+
+```
+leaf option names: []
+args: {}
+thrown: undefined
+```
+
+No error. The command ran without its required argument.
+
+### The fix
+
+The same fix as F14: collect the required options from the invoked branch,
+recursively. `findSchemaOption()` already shows the recursive pattern to
+follow.
+
+---
+
+## F16: `invalidateGuild` leaves the guild's cached channels behind
+
+**Severity: high. Stale permission overwrites survive, and channels leak.**
+
+### The problem
+
+`invalidateGuild()` deletes three keys:
+
+```ts
+public async invalidateGuild(guildId: string): Promise<void> {
+    await this.store.delete(this.key('roles', guildId));
+    await this.store.delete(this.key('guild', guildId));
+    await this.store.delete(this.key('guildMember', guildId));
+}
+```
+
+The `channel` kind is **not** among them — and `channel` is one of the two
+kinds enabled by default:
+
+```ts
+export const MINIMAL_TIER_KINDS: readonly CacheKind[] = ['roles', 'channel'];
+```
+
+Channel entries hold the `permission_overwrites` that permission resolution
+depends on. Because channels are keyed by channel id rather than guild id,
+there is no way to enumerate "the channels of guild X" from the cache keys,
+so `invalidateGuild` cannot clear them.
+
+The consequences:
+
+- `guildDelete` leaves the departed guild's channels cached forever — the
+  `channel` kind has no TTL, so they are never reclaimed.
+- `guildUpdate` and the role events leave stale `permission_overwrites` in
+  place, which permission resolution will keep reading.
+
+### Evidence
+
+```
+roles after invalidate: undefined
+channel after invalidate: {"id":"channel-1","permission_overwrites":[]}
+```
+
+The role entry was cleared; the channel entry survived.
+
+### The fix
+
+**Track which channels belong to which guild**, so that a guild
+invalidation can reach them.
+
+The cache already keeps a per-kind index for messages (`messageKeys`). The
+same approach works for channels: index channel ids by guild id when a
+channel is written, and delete the whole set on guild invalidation.
+
+```ts
+private readonly guildChannels = new Map<string, Set<string>>();
+
+// in set(), for kind === 'channel':
+//   record the channel id under the channel's guild id
+
+// in invalidateGuild():
+for (const channelId of this.guildChannels.get(guildId) ?? []) {
+    await this.store.delete(this.key('channel', channelId));
+}
+this.guildChannels.delete(guildId);
+```
+
+The channel payload contains `guild_id`, so the mapping is available at write
+time.
+
+---
+
+## F17: `invalidateGuild` uses a member key that is never written
+
+**Severity: medium. Guild members are never cleared by a guild invalidation.**
+
+### The problem
+
+Two different key formats are used for the same kind.
+
+`invalidateGuild()` deletes `guildMember:{guildId}`:
+
+```ts
+await this.store.delete(this.key('guildMember', guildId));
+```
+
+but the invalidation listeners — and any caller — use
+`guildMember:{guildId}:{userId}`:
+
+```ts
+on('guildMemberUpdate', (event) => {
+    void cache.delete('guildMember', `${event.guildId}:${event.userId}`);
+});
+```
+
+`Cache.set()` builds the key as `${kind}:${id}`, so a member stored with the
+id `guild-1:user-1` lives at `guildMember:guild-1:user-1`. The key
+`guildMember:guild-1` is never written, so the deletion never matches
+anything.
+
+`guildMembersChunk` calls `invalidateGuild()`, intending to clear the
+guild's members. It does not.
+
+### Evidence
+
+```
+member 1 after invalidate: {"user":{"id":"user-1"}}
+member 2 after invalidate: {"user":{"id":"user-2"}}
+```
+
+Both members survived.
+
+### The fix
+
+**Pick one key format and use it everywhere.**
+
+The natural choice is the one the listeners already use,
+`guildMember:{guildId}:{userId}`, which means `invalidateGuild` must delete
+*all* members of the guild — which needs the same guild→members index that
+F16 needs for channels.
+
+Both fixes therefore want the same piece of machinery: **a guild→entries
+index**, maintained per kind. It is worth building once:
+
+```ts
+private readonly guildIndex = new Map<string, Map<CacheKind, Set<string>>>();
+```
+
+---
+
+## F18: `getFocused(true)` never returns the focused option
+
+**Severity: low. The `getFull` parameter has no effect.**
+
+### The problem
+
+The resolver looks for a `choices` array on the focused option:
+
+```ts
+const choice = focused.options?.find(
+    (option) => option.value === focused.value,
+);
+
+return choice ?? focused.value;
+```
+
+But the focused option in an autocomplete payload is
+`{ name, type, value }` — it has no `options` array. The `options` array
+holds the *declared* choices of the command option, not the focused one.
+
+So `choice` is always `undefined`, and `getFocused(true)` returns
+`focused.value` — a string — exactly as `getFocused(false)` does.
+
+### Evidence
+
+```
+getFocused(): "search"
+getFocused(true): "search"
+typeof getFocused(true): string has name? false
+```
+
+The documented contract is "Whether the full choice object is returned". It
+never is.
+
+### The fix
+
+**Return the focused option itself**, which is the object that carries
+`name`, `type` and `value`:
+
+```ts
+public getFocused(getFull = false): string | CommandDataOption | null {
+    if (!this.focused) {
+        return null;
+    }
+
+    return getFull ? this.focused : (this.focused as { value: string }).value;
+}
+```
+
+The `getFull` return type should be `CommandDataOption` rather than
+`APIApplicationCommandOptionChoice`, because the focused option is not a
+choice.
+
+---
+
+## F19: The access policy does not cover custom actions
+
+**Severity: high. The `access` policy is a security control, and it does not
+apply to the buttons it is supposed to protect.**
+
+### The problem
+
+`Flow` checks the access policy in `onNavigation()`:
+
+```ts
+public async onNavigation(action, context): Promise<void> {
+    if (!(await this.canInteract(context.interaction))) {
+        await this.denyAccess(context.interaction);
+        return;
+    }
+    ...
+}
+```
+
+but `onAction()` does not:
+
+```ts
+public async onAction(action, context): Promise<void> {
+    const step = this.stepOf(context.state.currentStepId);
+
+    if (!step.onAction) {
+        return;
+    }
+
+    await step.onAction(action, this.context(context.state, context.interaction));
+}
+```
+
+So the built-in navigation chrome is protected by `access`, while the
+step's **own custom action buttons** are not. A user who is not the owner can
+press any custom button on the menu.
+
+This is exactly the case the access policy exists for: a custom button is
+usually the one that mutates state.
+
+### Evidence
+
+A menu with `access: { type: 'caller-only' }`, owned by `owner-1`, with a
+custom action handler. The interaction comes from `intruder-1`:
+
+```
+custom action ran for a non-owner: true
+current step after a denied navigation: one
+```
+
+The custom action ran for the intruder. The navigation action was correctly
+denied — the state did not advance past `one`.
+
+### The fix
+
+**Check the access policy in `onAction()` as well.**
+
+```ts
+public async onAction(action, context): Promise<void> {
+    if (!(await this.canInteract(context.interaction))) {
+        await this.denyAccess(context.interaction);
+        return;
+    }
+
+    const step = this.stepOf(context.state.currentStepId);
+    ...
+}
+```
+
+Better still, move the check into the **router**, so that the policy applies
+to every widget uniformly rather than to the two entry points of `Flow` — a
+custom widget registered directly with the router currently has no access
+control at all.
+
+---
+
+## F20: `register()` accepts a missing state and stores `undefined`
+
+**Severity: medium. The failure surfaces far from its cause.**
+
+### The problem
+
+`WidgetRouter.register()` takes the state as an optional parameter:
+
+```ts
+public async register<S>(
+    widget: Widget<S>,
+    target: MessageTarget | null = null,
+    state: S | undefined = undefined,
+): Promise<void> {
+    this.widgets.set(widget.routingId, {
+        widget,
+        state: state as S,
+        target,
+    });
+```
+
+Registering a widget without a state stores `undefined`. The widget's
+`render(state)` then receives `undefined`, and any code that reads a
+property of it throws.
+
+The `state as S` cast hides the mismatch from the compiler.
+
+### Evidence
+
+Registering a `Menu` without a state and dispatching an action to it:
+
+```
+TypeError: Cannot read properties of undefined (reading 'currentStepId')
+ ❯ Menu.onAction src/ui/menu/Flow.ts:206:48
+ ❯ WidgetRouter.dispatch src/ui/router.ts:396:43
+```
+
+The error points at the menu's action handler, but the cause was the
+registration.
+
+### The fix
+
+**Make the state required.** A widget always has state — that is the
+definition of the model — so the parameter should not be optional:
+
+```ts
+public async register<S>(
+    widget: Widget<S>,
+    state: S,
+    target: MessageTarget | null = null,
+): Promise<void> {
+```
+
+Reordering the parameters so `state` comes before the optional `target`
+avoids a breaking change for callers that pass all three, and makes the
+mistake a compile error rather than a runtime one.
+
+---
+
+## F21: The Redis store uses the blocking `KEYS` command
+
+**Severity: medium. A production hazard on a shared Redis instance.**
+
+### The problem
+
+`RedisStore.keys()` issues the Redis `KEYS` command:
+
+```ts
+async keys(): Promise<string[]> {
+    const keys = await this.client.keys(`${this.prefix}*`);
+    return keys.map((key) => key.slice(this.prefix.length));
+}
+```
+
+`KEYS` is O(N) over the entire keyspace and **blocks the Redis server** for
+the duration of the scan. Redis's own documentation warns against it in
+favour of `SCAN`, which is cursor-based and non-blocking.
+
+The cache calls it on a timer. `Cache.sweep()` runs every hour by default:
+
+```ts
+for (const key of await this.store.keys()) {
+    const raw = await this.store.get(key);
+    ...
+}
+```
+
+That is one blocking `KEYS` over the whole keyspace, plus one `GET` per
+key, every hour — against a Redis server that may be shared with other
+services. `Cache.clear(kind)` has the same shape.
+
+### The fix
+
+**Use `SCAN`.**
+
+The `Store` interface's `keys()` method forces a full listing, which is the
+wrong shape for a large keyspace. It should become a cursor:
+
+```ts
+export interface Store<TValue = unknown> {
+    ...
+    /**
+     * Lists keys in batches, using a cursor.
+     */
+    scan(cursor: string): Promise<{ keys: string[]; cursor: string }>;
+}
+```
+
+and `RedisStore` implements it with `SCAN`/`MATCH`/`COUNT`, which never
+blocks the server.
+
+For stores that genuinely cannot scan incrementally — the in-memory one — the
+method can be implemented trivially.
+
+The cache's `sweep()` then walks the cursor rather than materialising every
+key at once, which also removes the N+1 round trips.
+
+---
+
+## Summary
+
+The order in which these should be fixed:
+
+1. **F10** — a button without a style produces a message Discord rejects.
+   Any user of `button()` without an explicit style hits it immediately.
+2. **F19** — the access policy does not cover custom actions. This is a
+   security control that does not do what it says.
+3. **F14** — a command with two subcommands that each have a required option
+   can never be invoked.
+4. **F13** — the router acknowledges after the handler, defeating the
+   three-second deadline guarantee the spike identified.
+5. **F16** and **F17** — together, since both need the guild→entries index.
+6. **F11**, **F12**, **F15**, **F18**, **F20** — independent and small.
+7. **F21** — a production concern for anyone using a shared Redis.
+
+F10, F13, F14, F19 and F20 are all cases where a cast (`as APIButtonComponent`,
+`state as S`) or an optional parameter hid a real problem from the compiler.
+That is the common thread, and it is worth a general look at where the
+codebase casts past the type system.
