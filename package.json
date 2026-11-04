@@ -1,7 +1,10 @@
 {
     "name": "tbdbot",
     "version": "1.0.1",
+    "author": "steamed-dodo",
     "license": "MIT",
+    "repository": "https://github.com/steamed-dodo/TBDBot",
+    "keywords": ["discord", "bot", "discord bot", "discordjs/core", "framework"],
     "description": "TBDBot - a Discord bot framework built on @discordjs/core",
     "type": "module",
     "main": "./dist/index.js",
