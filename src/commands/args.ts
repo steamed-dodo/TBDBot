@@ -33,8 +33,8 @@ export function resolveArgs(
         args[option.name] = readValue(option, optionSchema);
     }
 
-    for (const option of collectRequired(schema)) {
-        if (!(option.name in args)) {
+    for (const option of collectRequiredFor(schema, options)) {
+        if (!Object.hasOwn(args, option.name)) {
             throw new Error(
                 `Required option "${option.name}" is missing for command "${schema.name}".`,
             );
@@ -42,6 +42,82 @@ export function resolveArgs(
     }
 
     return args;
+}
+
+/**
+ * Collects the options that must be present for the branch that was
+ * invoked.
+ *
+ * The check follows the invoked subcommand rather than the whole schema
+ * tree: the required options of a *sibling* subcommand belong to a branch
+ * that was not taken, and demanding them would make a command with two
+ * subcommands unusable.
+ */
+function collectRequiredFor(
+    schema: CommandSchema,
+    options: CommandOptionResolver,
+): OptionSchema[] {
+    return collectRequired(invokedBranch(schema, options));
+}
+
+/**
+ * The schema options of the branch that was invoked.
+ *
+ * @param schema - The schema of the command.
+ * @param options - The resolver of the interaction.
+ * @returns The options of the invoked subcommand.
+ */
+function invokedBranch(
+    schema: CommandSchema,
+    options: CommandOptionResolver,
+): CommandSchema {
+    let current: readonly OptionSchema[] = schema.options;
+
+    const groupName = options.getSubcommandGroup();
+
+    if (groupName !== null) {
+        const group = current.find((option) => option.name === groupName);
+
+        current = group?.options ?? [];
+    }
+
+    const subcommandName = options.getSubcommand();
+
+    if (subcommandName !== null) {
+        const subcommand = current.find(
+            (option) => option.name === subcommandName,
+        );
+
+        current = subcommand?.options ?? [];
+    }
+
+    return { ...schema, options: current };
+}
+
+/**
+ * Collects the required options of a schema, at any depth.
+ *
+ * @param schema - The schema to walk.
+ * @returns The required options.
+ */
+function collectRequired(schema: CommandSchema): OptionSchema[] {
+    const required: OptionSchema[] = [];
+
+    const visit = (options: readonly OptionSchema[]): void => {
+        for (const option of options) {
+            if (option.required) {
+                required.push(option);
+            }
+
+            if (option.options) {
+                visit(option.options);
+            }
+        }
+    };
+
+    visit(schema.options);
+
+    return required;
 }
 
 function findSchemaOption(
@@ -70,26 +146,6 @@ function findSchemaOption(
     }
 
     return undefined;
-}
-
-function collectRequired(schema: CommandSchema): OptionSchema[] {
-    const required: OptionSchema[] = [];
-
-    for (const option of schema.options) {
-        if (option.required) {
-            required.push(option);
-        }
-
-        if (option.options) {
-            for (const nested of option.options) {
-                if (nested.required) {
-                    required.push(nested);
-                }
-            }
-        }
-    }
-
-    return required;
 }
 
 function validateOption(option: CommandDataOption, schema: OptionSchema): void {
