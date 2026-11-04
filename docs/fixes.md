@@ -9,17 +9,21 @@ expensive to fix in code.
 
 **Status of each item:**
 
-| ID | Severity | Status |
-|---|---|---|
-| [F1](#f1-ephemeral-messages-have-a-15-minute-edit-window) | **High** | Open |
-| [F2](#f2-no-vertical-slice-in-the-roadmap) | **High** | Open |
-| [F3](#f3-widget-state-ownership-is-contradictory) | **High** | Open |
-| [F4](#f4-widget-tests-must-assert-on-request-shape) | **High** | Open |
-| [F5](#f5-the-design-needs-an-invariants-section) | Medium | Open |
-| [F6](#f6-one-menuwizard-class-may-become-a-mode-flag) | Medium | Open |
-| [F7](#f7-the-event-router-scope-is-undefined) | Medium | Open |
-| [F8](#f8-persistent-widgets-should-not-hold-a-message-object) | Low | Open |
-| [F9](#f9-design-doc-is-long-and-hard-to-navigate) | Low | Open |
+All nine items have been applied. The commit that applied each one is named
+in the table, and the design documents record where it landed — see
+[design.md § Fixes applied](./design.md#fixes-applied).
+
+| ID | Severity | Status | Applied in |
+|---|---|---|---|
+| [F1](#f1-ephemeral-messages-have-a-15-minute-edit-window) | **High** | Applied | `1f9cf7d` |
+| [F2](#f2-no-vertical-slice-in-the-roadmap) | **High** | Applied | `e3899d3` |
+| [F3](#f3-widget-state-ownership-is-contradictory) | **High** | Applied | `ce66527` |
+| [F4](#f4-widget-tests-must-assert-on-request-shape) | **High** | Applied | `eb2b32e` |
+| [F5](#f5-the-design-needs-an-invariants-section) | Medium | Applied | `dfb7b19` |
+| [F6](#f6-one-menuwizard-class-may-become-a-mode-flag) | Medium | Applied | `ce66527` |
+| [F7](#f7-the-event-router-scope-is-undefined) | Medium | Applied | `b124c7d` |
+| [F8](#f8-persistent-widgets-should-not-hold-a-message-object) | Low | Applied | `ce66527` |
+| [F9](#f9-design-doc-is-long-and-hard-to-navigate) | Low | Applied | `3a5333b` |
 
 ---
 
@@ -612,3 +616,28 @@ will be where the underlying evidence lives.
    the widget engine, not after.
 5. **F6**, **F7**, **F8**, **F9** — fold into implementation as each module
    is built.
+
+### What actually happened
+
+The implementation had already been built when this document was written, so
+the order above could not be followed literally. The fixes were applied
+afterwards, in the order the work turned out to depend on:
+
+- **F3** and **F6** together, because the Menu/Wizard split changes the
+  widget's state transitions and the state model changes what a transition
+  returns. **F8** came with them: a persistent widget now holds only
+  identifiers.
+- **F4** next, because the mock transport had to record a route before the
+  request-shape assertions could be written.
+- **F1** on top of that, since the expired-message test needs the route
+  assertions to be in place.
+- **F7** after the event router was in place, because scoping it means
+  moving it onto the gateway dispatch.
+- **F2** last, because the slice is only meaningful once the framework it
+  exercises exists — and it found two real problems: an interaction that a
+  handler left unanswered, and a widget that had no way to be delivered.
+- **F5** and **F9** were already applied to the design documents before the
+  code was touched.
+
+The dependency order held: the state model was settled before the tests were
+written, and the tests were written before the expiry was implemented.
