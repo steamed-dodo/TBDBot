@@ -18,14 +18,14 @@ npm install tbdbot
 
 ```ts
 import {
-    FrameworkClient,
+    Client,
     Menu,
     WidgetRouter,
     Wizard,
     button,
 } from 'tbdbot';
 
-const client = new FrameworkClient({ token: process.env.BOT_TOKEN! });
+const client = new Client({ token: process.env.BOT_TOKEN! });
 const router = new WidgetRouter(client.api);
 
 client.on('interactionCreate', async (interaction) => {
@@ -65,7 +65,7 @@ await wizard.reply(interaction, { ephemeral: true }, router);
 
 ### Core
 
-`FrameworkClient` owns the `REST` instance, the gateway, and the connect and
+`Client` owns the `REST` instance, the gateway, and the connect and
 destroy lifecycle. It translates the raw gateway dispatches into friendly,
 typed events:
 
