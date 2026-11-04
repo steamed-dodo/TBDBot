@@ -20,7 +20,7 @@
         "build:js": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js",
         "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
         "dev": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js --watch",
-        "typecheck": "tsc --noEmit && tsc -p examples/tsconfig.json",
+        "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json && tsc -p examples/tsconfig.json",
         "test": "vitest run",
         "test:watch": "vitest",
         "prepack": "npm run build",
