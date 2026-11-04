@@ -74,6 +74,44 @@ describe('metrics registry', () => {
 
         expect(() => counter.inc({ name: 'x'.repeat(65) })).toThrow(TypeError);
     });
+
+    describe('defects found in the third pass', () => {
+        it('rejects unbounded labels on a gauge', () => {
+            const registry = new MetricRegistry();
+            const gauge = registry.gauge('bot_test_gauge', 'Test.', ['name']);
+
+            expect(() => gauge.set(1, { name: 'x'.repeat(65) })).toThrow(
+                TypeError,
+            );
+            expect(() => gauge.inc({ name: 'x'.repeat(65) })).toThrow(
+                TypeError,
+            );
+            expect(() => gauge.dec({ name: 'x'.repeat(65) })).toThrow(
+                TypeError,
+            );
+        });
+
+        it('rejects unbounded labels on a histogram', () => {
+            const registry = new MetricRegistry();
+            const histogram = registry.histogram(
+                'bot_test_seconds',
+                'Test.',
+                ['name'],
+                [1],
+            );
+
+            expect(() =>
+                histogram.observe(1, { name: 'x'.repeat(65) }),
+            ).toThrow(TypeError);
+        });
+
+        it('rejects an undeclared label on a gauge increment', () => {
+            const registry = new MetricRegistry();
+            const gauge = registry.gauge('bot_test_gauge', 'Test.', ['name']);
+
+            expect(() => gauge.inc({ other: 'x' })).toThrow(TypeError);
+        });
+    });
 });
 
 describe('metrics handler', () => {

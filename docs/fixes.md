@@ -31,9 +31,9 @@ A **second pass** over the implementation found twelve further defects
 [Second pass](#second-pass-defects-found-in-the-implementation).
 
 A **third pass** verified each of those fixes and found four further defects
-(F22–F25), two of them introduced by the F14 and F16 fixes. They are open and
-documented in
-[Third pass](#third-pass-verifying-the-fixes-and-four-further-defects).
+(F22–F25), two of them introduced by the F14 and F16 fixes. A fourth was
+found while fixing those (F26). All five are applied and documented in
+[Third pass](#third-pass-verifying-the-fixes-and-five-further-defects).
 
 ---
 
@@ -1589,7 +1589,7 @@ codebase casts past the type system.
 
 ---
 
-# Third pass: verifying the fixes, and four further defects
+# Third pass: verifying the fixes, and five further defects
 
 F10–F21 were subsequently fixed. This pass had two jobs: check that each fix
 actually does what it claims, and look for defects the fixes missed or
@@ -1598,8 +1598,9 @@ introduced.
 **Status of F10–F21: all verified as fixed.** Each was re-checked with an
 executable test against the current code, not merely by reading the diff.
 
-**Status of F22–F25: all open.** Two were introduced by the fixes for F14 and
-F16; two are in code the earlier passes did not reach.
+**Status of F22–F26: all applied.** Two were introduced by the fixes for F14
+and F16; two are in code the earlier passes did not reach; F26 was found while
+fixing F22–F25 and is a consequence of the F16 index.
 
 | ID | Severity | Area | Summary |
 |---|---|---|---|
@@ -1607,6 +1608,21 @@ F16; two are in code the earlier passes did not reach.
 | [F23](#f23-clearkind-wipes-the-entire-guild-index) | **High** | `cache` | The F16 fix added a guild index, but `clear(kind)` clears the whole index rather than that kind's entries, so a later `invalidateGuild` silently misses the entries that survived. |
 | [F24](#f24-label-validation-is-only-enforced-for-counters) | Medium | `metrics` | `Gauge.set`, `Gauge.inc`, `Gauge.dec` and `Histogram.observe` do not bound label values; `Gauge.inc` and `Gauge.dec` do not validate the label set at all. |
 | [F25](#f25-a-bounded-non-message-cache-kind-scans-the-whole-keyspace-on-every-write) | Medium | `cache` | Applying `maxSize` to any kind other than `message` makes every write perform a full keyspace scan — three SCAN round trips with 250 keys, on a remote store. |
+| [F26](#f26-channels-cannot-be-unindexed-from-the-guild-index-on-delete) | Low | `cache` | A channel is unindexed by reading its guild from the value, but the delete path does not have the value, so deleted, swept and evicted channels stay in the guild index. |
+
+The fixes share one idea: **every removal goes through one function**, and every
+index is derived from state the framework already holds rather than from a
+lookup at removal time. Concretely:
+
+- `resolveArgs()` resolves the invoked branch once and uses it for both the
+  required check and option validation. `findSchemaOption()` is gone, so there
+  is a single resolution path.
+- The cache keeps a reverse `entryGuild` index, so `removeEntry()` can unindex
+  an entry without reading it back, and `delete()`, `sweep()`, `get()` and the
+  eviction path all call it. Eviction buckets replace the per-kind and
+  per-channel maps, and a write never scans the store.
+- `Gauge` and `Histogram` share the bounded-label check the counter already
+  had.
 
 ## Verification of F10–F21
 
@@ -1966,3 +1982,44 @@ feature the options surface advertises.
 F22 and F23 are both cases of a fix being applied at one call site and not
 its sibling — the same shape as F14 itself. When a lookup is scoped in one
 place, it is worth grepping for the other place that does the same lookup.
+
+---
+
+## F26: Channels cannot be unindexed from the guild index on delete
+
+**Severity: low. Functional impact is limited, but the guild index grows with stale entries.**
+
+### The problem
+
+The guild index is used by `invalidateGuild` to find channels and members. `guildOf()` extracts the guild ID differently per kind:
+- For `guildMember`, it parses from the key (`guildId:userId`)
+- For `channel`, it reads `guild_id` from the cached value
+
+When `delete()` is called, it calls `unindexEntry(kind, id)` without passing the cached value. For channels, `guildOf` receives `value=undefined` and returns `null`, so channels are never removed from the guild index. Similarly, `sweep()` and `enforceLimits()` delete directly from the store without going through `delete()`, leaving stale index entries.
+
+The index will retain entries for deleted/evicted channels. This is wasteful but not immediately breaking because `invalidateGuild` will attempt to delete those keys from the store (which are already gone) - the operations are idempotent.
+
+### The fix
+
+The guild an entry belongs to is now recorded in a reverse index when the
+entry is written, rather than recomputed at removal time:
+
+```ts
+private readonly entryGuild = new Map<string, string>();
+
+// indexEntry():
+this.entryGuild.set(this.key(kind, id), guildId);
+```
+
+`unindexEntry(kind, id)` reads the guild from that index, so it needs neither
+the value nor a store round trip. Every removal path — `delete()`, `sweep()`,
+the expired and malformed branches of `get()`, and eviction — goes through a
+single `removeEntry()` that deletes the key and updates both the guild index
+and the eviction bucket.
+
+Reading the value back (the option originally considered) would have fixed
+`delete()` but left the sweeper and the eviction path stale, because both
+remove entries without ever holding the value. It would also have added a
+store round trip to every delete. The reverse index removes the problem for
+all four paths at once.
+

@@ -531,9 +531,7 @@ export class Cache {
      * @returns The bucket key.
      */
     private bucketOf(kind: CacheKind, id: string): string {
-        return kind === 'message'
-            ? `message:${id.split(':')[0] ?? ''}`
-            : kind;
+        return kind === 'message' ? `message:${id.split(':')[0] ?? ''}` : kind;
     }
 
     /**

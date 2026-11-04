@@ -391,6 +391,56 @@ describe('argument validation', () => {
             });
         });
     });
+
+    describe('defects found in the third pass', () => {
+        it('validates an option against the invoked subcommand, not a namesake', () => {
+            const command = new SlashCommandBuilder()
+                .setName('test')
+                .setDescription('Test')
+                .addSubcommand((sub) =>
+                    sub
+                        .setName('a')
+                        .setDescription('A')
+                        .addIntegerOption((option) =>
+                            option.setName('value').setDescription('Value'),
+                        ),
+                )
+                .addSubcommand((sub) =>
+                    sub
+                        .setName('b')
+                        .setDescription('B')
+                        .addStringOption((option) =>
+                            option.setName('value').setDescription('Value'),
+                        ),
+                );
+
+            const interaction = createInteraction(
+                createCommandInteraction('test', {
+                    options: [
+                        {
+                            name: 'b',
+                            type: ApplicationCommandOptionType.Subcommand,
+                            value: undefined,
+                            options: [
+                                {
+                                    name: 'value',
+                                    type: ApplicationCommandOptionType.String,
+                                    value: 'hello',
+                                },
+                            ],
+                        },
+                    ],
+                }),
+                api.interactions,
+            );
+
+            const resolver = new CommandOptionResolver(interaction);
+
+            expect(
+                resolveArgs(deriveSchemaFromBuilder(command), resolver),
+            ).toEqual({ value: 'hello' });
+        });
+    });
 });
 
 describe('command manager', () => {
