@@ -27,8 +27,13 @@ design documents record where it landed — see
 | [F9](#f9-design-doc-is-long-and-hard-to-navigate) | Low | Applied | `3a5333b` |
 
 A **second pass** over the implementation found twelve further defects
-(F10–F21). Those are all open and are documented in
+(F10–F21). Those have since been fixed and are documented in
 [Second pass](#second-pass-defects-found-in-the-implementation).
+
+A **third pass** verified each of those fixes and found four further defects
+(F22–F25), two of them introduced by the F14 and F16 fixes. They are open and
+documented in
+[Third pass](#third-pass-verifying-the-fixes-and-four-further-defects).
 
 ---
 
@@ -1581,3 +1586,383 @@ F10, F13, F14, F19 and F20 are all cases where a cast (`as APIButtonComponent`,
 `state as S`) or an optional parameter hid a real problem from the compiler.
 That is the common thread, and it is worth a general look at where the
 codebase casts past the type system.
+
+---
+
+# Third pass: verifying the fixes, and four further defects
+
+F10–F21 were subsequently fixed. This pass had two jobs: check that each fix
+actually does what it claims, and look for defects the fixes missed or
+introduced.
+
+**Status of F10–F21: all verified as fixed.** Each was re-checked with an
+executable test against the current code, not merely by reading the diff.
+
+**Status of F22–F25: all open.** Two were introduced by the fixes for F14 and
+F16; two are in code the earlier passes did not reach.
+
+| ID | Severity | Area | Summary |
+|---|---|---|---|
+| [F22](#f22-option-validation-resolves-the-schema-by-name-across-the-whole-tree) | **High** | `commands/args` | Fixing F14 narrowed the *required* check to the invoked branch but left the *validation* lookup searching the whole tree, so a same-named option in a sibling subcommand is validated against the wrong type. |
+| [F23](#f23-clearkind-wipes-the-entire-guild-index) | **High** | `cache` | The F16 fix added a guild index, but `clear(kind)` clears the whole index rather than that kind's entries, so a later `invalidateGuild` silently misses the entries that survived. |
+| [F24](#f24-label-validation-is-only-enforced-for-counters) | Medium | `metrics` | `Gauge.set`, `Gauge.inc`, `Gauge.dec` and `Histogram.observe` do not bound label values; `Gauge.inc` and `Gauge.dec` do not validate the label set at all. |
+| [F25](#f25-a-bounded-non-message-cache-kind-scans-the-whole-keyspace-on-every-write) | Medium | `cache` | Applying `maxSize` to any kind other than `message` makes every write perform a full keyspace scan — three SCAN round trips with 250 keys, on a remote store. |
+
+## Verification of F10–F21
+
+Each row is the captured output of a test run against the current code.
+
+| Fix | Evidence | Verdict |
+|---|---|---|
+| F10 | `F10 rendered: {"type":2,"custom_id":"ui:widget1:act","label":"Press","style":1}` | Fixed |
+| F11 | `createCustomId("~spoofed") threw: Action must not contain the reserved prefix "~"` and `renderContent(spec with "~") threw: Action must not contain the reserved prefix "~"` | Fixed |
+| F12 | `resolve(constructor) -> bigint 0`, `resolve(toString) -> bigint 0`, `resolve(valueOf) -> bigint 0`, `resolve(hasOwnProperty) -> bigint 0` | Fixed |
+| F13 | `F13 responded after the slow handler: true` — with `acknowledgeAfter: 20` and a handler that sleeps 120 ms | Fixed |
+| F14 | `F14 args: {"url":"https://x"}` — the `add` subcommand no longer demands `remove`'s `id` | Fixed |
+| F15 | `F15 threw: Required option "target" is missing for command "test".` | Fixed |
+| F16/F17 | `F16 roles: undefined channel: undefined member: undefined` after `invalidateGuild` | Fixed |
+| F18 | `F18 plain: search full: {"name":"target","type":3,"value":"search"}` | Fixed |
+| F19 | `F19 custom action ran for a non-owner: false` | Fixed |
+| F20 | `register` now takes `state` as a required parameter and typecheck passes | Fixed |
+| F21 | `F21 scanned keys: 250 in 3 calls` — batch sizes of 100 | Fixed |
+
+### Two notes on the fixes themselves
+
+**F13 was fixed better than proposed.** The recommendation was to defer
+*before* dispatching. The implementation instead arms a timer
+(`ACKNOWLEDGE_AFTER = 2500`) that acknowledges on the handler's behalf if the
+handler has not answered by then, cleared in a `finally`. That is the better
+design: deferring unconditionally would break a handler that wants to open a
+modal, because a modal response cannot follow a deferral.
+
+**F11 leaves one hardening gap.** Minting is now guarded — both
+`createCustomId` and `renderContent` reject an action containing `~`, which is
+the actual attack path, since a `custom_id` is written by the bot and cannot
+be altered by a user. But the *inbound* path still treats any `~`-prefixed
+action as reserved without checking it against `RESERVED_ACTIONS`. That is
+only reachable by a message minted before the fix (such as a persisted
+panel), so it is a migration concern rather than a live vulnerability. It is
+worth a one-line check if the framework ever supports upgrading in place.
+
+---
+
+## F22: Option validation resolves the schema by name across the whole tree
+
+**Severity: high. Two subcommands that use the same option name with
+different types make one of them unusable.**
+
+### The problem
+
+The F14 fix correctly scoped the *required* check to the invoked branch via
+`invokedBranch()`. The *validation* lookup was left alone:
+
+```ts
+for (const option of options.leaf) {
+    const optionSchema = findSchemaOption(schema, option.name);
+    ...
+    validateOption(option, optionSchema);
+}
+```
+
+`findSchemaOption()` searches the **entire** schema tree and returns the first
+option whose name matches:
+
+```ts
+function findSchemaOption(schema, name) {
+    const direct = findOptionSchema(schema, name);   // top level
+    if (direct) return direct;
+
+    for (const option of schema.options) {
+        if (!option.options) continue;
+        const nested = findSchemaOption({ ...schema, options: option.options }, name);
+        if (nested) return nested;
+    }
+    return undefined;
+}
+```
+
+So if subcommand `a` declares `value` as an integer and subcommand `b`
+declares `value` as a string, invoking `b` finds `a`'s schema first and then
+rejects the string as "not an integer".
+
+The same flaw affects the bounds and the choice list: an option is validated
+against whichever same-named declaration happens to appear first in the
+tree.
+
+### Evidence
+
+A command with `a` (integer `value`) declared before `b` (string `value`),
+invoking `b` with a string:
+
+```
+NEW-1 args: null
+NEW-1 thrown: Option "value" is of type 3, not 4.
+```
+
+`3` is `String`, `4` is `Integer`. Subcommand `b` cannot be invoked at all.
+
+### The fix
+
+Use the same branch resolution the required check already uses. `resolveArgs`
+should compute `invokedBranch(schema, options)` once and use it for both
+lookups:
+
+```ts
+const branch = invokedBranch(schema, options);
+const required = collectRequired(branch);
+
+for (const option of options.leaf) {
+    const optionSchema = findOptionSchema(branch, option.name);
+    ...
+}
+```
+
+`findOptionSchema` does a single-level lookup, which is correct once the
+branch has been narrowed. `findSchemaOption` then has no remaining callers
+and can be deleted — which is the point: one resolution path, not two.
+
+---
+
+## F23: `clear(kind)` wipes the entire guild index
+
+**Severity: high. A single-kind clear silently disables guild invalidation
+for every kind that survives it.**
+
+### The problem
+
+The F16 fix added a guild→entries index so that `invalidateGuild` can reach
+channels and members. `clear()` removes the whole index whenever *any* kind
+is cleared:
+
+```ts
+public async clear(kind?: CacheKind): Promise<void> {
+    if (kind) {
+        const prefix = `${kind}:`;
+
+        for (const key of await this.listKeys(prefix)) {
+            await this.store.delete(key);
+        }
+
+        if (kind === 'message') {
+            this.messageKeys.clear();
+        }
+
+        this.guildIndex.clear();      // <-- every guild, every kind
+
+        return;
+    }
+    ...
+}
+```
+
+Clearing `roles` therefore also forgets where the still-cached channels and
+members live. They remain in the store, but `invalidateGuild` can no longer
+find them.
+
+This is a regression introduced by the F16 fix: before it, `invalidateGuild`
+was uniformly incomplete; now it is complete until someone calls
+`clear(kind)`, and then silently incomplete for unrelated kinds.
+
+### Evidence
+
+```ts
+await cache.set('roles', 'g1', [{ id: 'r1' }]);
+await cache.set('channel', 'c1', { id: 'c1', guild_id: 'g1' });
+await cache.set('guildMember', 'g1:u1', { id: 'u1' });
+
+await cache.clear('roles');      // only the roles kind
+await cache.invalidateGuild('g1');
+```
+
+```
+NEW-2 channel after clear+invalidate: {"id":"c1","guild_id":"g1"}
+NEW-2 member after clear+invalidate: {"id":"u1"}
+```
+
+Both survived a guild invalidation they should not have survived.
+
+### The fix
+
+Remove only the cleared kind from the index:
+
+```ts
+if (kind) {
+    for (const [guildId, kinds] of this.guildIndex) {
+        kinds.delete(kind);
+
+        if (kinds.size === 0) {
+            this.guildIndex.delete(guildId);
+        }
+    }
+    ...
+}
+```
+
+The unconditional `this.guildIndex.clear()` belongs only in the
+`clear()`-everything branch, where it is already correct — and there it
+should also be paired with clearing every other index (`messageKeys`), which
+it does.
+
+---
+
+## F24: Label validation is only enforced for counters
+
+**Severity: medium. The rule the invariants call a hard requirement is
+enforced on one metric type out of three.**
+
+### The problem
+
+The design states, as a hard rule, that label sets must be bounded because
+unbounded cardinality takes down the Prometheus server. Only `Counter`
+enforces it:
+
+```ts
+// Counter
+public inc(labels?: Labels, value = 1): void {
+    assertLabelsMatch(this.labelNames, labels);
+    this.validate(labels);          // -> assertBoundedLabel per label
+    ...
+}
+
+// Gauge
+public set(value: number, labels?: Labels): void {
+    assertLabelsMatch(this.labelNames, labels);
+    // no bounding
+}
+
+public inc(labels?: Labels, value = 1): void {
+    // no validation at all
+}
+
+// Histogram
+public observe(value: number, labels?: Labels): void {
+    assertLabelsMatch(this.labelNames, labels);
+    // no bounding
+}
+```
+
+`Gauge.inc` and `Gauge.dec` are the worst case: they validate nothing, so a
+label name that was never declared is accepted and becomes a new sample.
+
+### Evidence
+
+```
+NEW-3 counter bounded: Label "guild" must not exceed 64 characters; ...
+NEW-3 gauge bounded: no error
+NEW-3 histogram bounded: no error
+NEW-3 gauge.inc rejects unknown label: no error
+NEW-3 gauge exposition: "# HELP g2 help\n# TYPE g2 gauge\ng2{arbitrary=\"unbounded-value\"} 1"
+```
+
+The last line is the failure mode the rule exists to prevent: an undeclared,
+arbitrary label value captured as a permanent time series.
+
+### The fix
+
+Extract the validation `Counter` does and call it from every mutator:
+
+```ts
+function assertValidLabels(
+    metricName: string,
+    labelNames: readonly string[],
+    labels: Labels | undefined,
+): void {
+    assertLabelsMatch(labelNames, labels);
+
+    if (!labels) return;
+
+    for (const name of labelNames) {
+        const value = labels[name];
+        if (value !== undefined) assertBoundedLabel(name, value);
+    }
+}
+```
+
+and call it from `Counter.inc`, `Gauge.set`, `Gauge.inc`, `Gauge.dec` and
+`Histogram.observe`.
+
+A cheaper alternative for the two `Gauge` increment methods is to have them
+delegate to `get` + `set`, which already validates.
+
+---
+
+## F25: A bounded non-message cache kind scans the whole keyspace on every write
+
+**Severity: medium. Performance, not correctness — but it turns one write
+into a full keyspace scan, which on Redis means several SCAN round trips per
+write.**
+
+### The problem
+
+`enforceLimits()` has two paths. The `message` path keeps an in-process
+per-channel index and never touches the store to count. Every other kind
+lists the entire keyspace:
+
+```ts
+if (kind !== 'message') {
+    const prefix = `${kind}:`;
+    const keys = await this.listKeys(prefix);   // scans the WHOLE store
+
+    while (keys.length > maxSize) {
+        const oldest = keys.shift();
+        if (oldest) await this.store.delete(oldest);
+    }
+
+    return;
+}
+```
+
+`listKeys(prefix)` walks `store.scan()` from cursor `'0'` to the end and
+filters by prefix **client-side**, so the scan covers every key in the store,
+not just the ones of that kind. Every `set()` of a kind that has `maxSize`
+pays for it.
+
+Only `message` has a `maxSize` by default, so this is latent — but
+`CacheOptions.kinds` lets a user set `maxSize` on any kind, which is exactly
+what the option is for.
+
+### Evidence
+
+With 250 entries in the store and `kinds: { user: { maxSize: 2 } }`, a single
+`cache.set('user', 'u1', …)` performs:
+
+```
+NEW-5 store size: 250+
+NEW-5 scans for a single set(): 4
+```
+
+Four `SCAN` round trips against a remote store for one write.
+
+### The fix
+
+Maintain the same in-process index for every kind that has a `maxSize`, as
+the `message` path already does:
+
+```ts
+private readonly kindKeys = new Map<CacheKind, string[]>();
+```
+
+Push the new id on `set`, shift the oldest when over the limit, and keep it
+in step with `delete`, `clear` and `sweep`. Then no write touches the store
+to count.
+
+The alternative — deleting the non-message limit path entirely and
+documenting that `maxSize` applies only to messages — is honest, but loses a
+feature the options surface advertises.
+
+---
+
+## Recommended order for the third pass
+
+1. **F22** — a same-named option in a sibling subcommand makes that
+   subcommand unusable, and the fix is a two-line change because
+   `invokedBranch` already exists.
+2. **F23** — the F16 fix is incomplete without it, and it silently degrades
+   a security-adjacent cache rather than failing loudly.
+3. **F24** — cheap, and it restores the hard rule the design states.
+4. **F25** — performance, only reachable when `maxSize` is configured on a
+   non-message kind.
+
+F22 and F23 are both cases of a fix being applied at one call site and not
+its sibling — the same shape as F14 itself. When a lookup is scoped in one
+place, it is worth grepping for the other place that does the same lookup.
