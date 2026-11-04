@@ -1,6 +1,7 @@
 import {
     assertBoundedLabel,
     assertLabelsMatch,
+    formatLabels,
     sampleName,
 } from './labels';
 import type { Labels } from './labels';
@@ -183,7 +184,12 @@ export class Gauge {
 export class Histogram {
     private readonly buckets = new Map<
         string,
-        { counts: number[]; sum: number; count: number }
+        {
+            labels: Labels;
+            counts: number[];
+            sum: number;
+            count: number;
+        }
     >();
 
     /**
@@ -212,6 +218,7 @@ export class Histogram {
 
         const key = sampleName(this.name, labels);
         const bucket = this.buckets.get(key) ?? {
+            labels: labels ?? {},
             counts: new Array(this.bucketBounds.length).fill(0),
             sum: 0,
             count: 0,
@@ -269,40 +276,28 @@ export class Histogram {
             a.localeCompare(b),
         );
 
-        for (const [key, bucket] of entries) {
-            const base = key.slice(0, key.lastIndexOf('}') + 1) || '';
-
+        for (const [, bucket] of entries) {
             for (const [index, bound] of this.bucketBounds.entries()) {
                 lines.push(
-                    `${this.name}_bucket${mergeLabels(base, { le: String(bound) })} ${bucket.counts[index] ?? 0}`,
+                    `${this.name}_bucket${formatLabels({
+                        ...bucket.labels,
+                        le: String(bound),
+                    })} ${bucket.counts[index] ?? 0}`,
                 );
             }
 
             lines.push(
-                `${this.name}_bucket${mergeLabels(base, { le: '+Inf' })} ${bucket.count}`,
+                `${this.name}_bucket${formatLabels({
+                    ...bucket.labels,
+                    le: '+Inf',
+                })} ${bucket.count}`,
             );
-            lines.push(`${this.name}_sum${base} ${bucket.sum}`);
-            lines.push(`${this.name}_count${base} ${bucket.count}`);
+            lines.push(`${this.name}_sum${formatLabels(bucket.labels)} ${bucket.sum}`);
+            lines.push(
+                `${this.name}_count${formatLabels(bucket.labels)} ${bucket.count}`,
+            );
         }
 
         return lines.join('\n');
     }
-}
-
-function mergeLabels(base: string, extra: Labels): string {
-    if (!base) {
-        return formatExtra(extra);
-    }
-
-    const inner = base.slice(1, -1);
-
-    return `{${inner},${formatExtra(extra).slice(1, -1)}}`;
-}
-
-function formatExtra(extra: Labels): string {
-    const body = Object.entries(extra)
-        .map(([key, value]) => `${key}="${value}"`)
-        .join(',');
-
-    return `{${body}}`;
 }

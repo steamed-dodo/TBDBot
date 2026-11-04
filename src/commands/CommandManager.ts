@@ -47,6 +47,8 @@ export class CommandManager {
 
     private readonly schemas = new Map<string, ReturnType<typeof deriveSchemaFromBuilder>>();
 
+    private readonly pipelines = new Map<string, Middleware[]>();
+
     /**
      * @param options - Manager configuration.
      */
@@ -90,12 +92,37 @@ export class CommandManager {
         validateSchema(schema);
 
         this.schemas.set(command.name, schema);
+        this.pipelines.set(command.name, this.buildPipeline(command));
         this.commands.set(command.name, {
             ...command,
             schema,
         });
 
         return this;
+    }
+
+    private buildPipeline(command: CommandDefinition): Middleware[] {
+        const middlewares: Middleware[] = [];
+
+        if (command.guildOnly) {
+            middlewares.push(guildOnlyMiddleware());
+        }
+
+        if (command.ownerOnly) {
+            middlewares.push(ownerOnlyMiddleware(this.ownerIds));
+        }
+
+        if (command.permissions !== undefined) {
+            middlewares.push(permissionMiddleware(command.permissions));
+        }
+
+        if (command.cooldown !== undefined) {
+            middlewares.push(cooldownMiddleware(command.cooldown));
+        }
+
+        middlewares.push(...(command.middlewares ?? []));
+
+        return middlewares;
     }
 
     /**
@@ -221,25 +248,7 @@ export class CommandManager {
         context: Parameters<Middleware>[0],
         command: CommandDefinition,
     ): Promise<void> {
-        const middlewares: Middleware[] = [];
-
-        if (command.guildOnly) {
-            middlewares.push(guildOnlyMiddleware());
-        }
-
-        if (command.ownerOnly) {
-            middlewares.push(ownerOnlyMiddleware(this.ownerIds));
-        }
-
-        if (command.permissions !== undefined) {
-            middlewares.push(permissionMiddleware(command.permissions));
-        }
-
-        if (command.cooldown !== undefined) {
-            middlewares.push(cooldownMiddleware(command.cooldown));
-        }
-
-        middlewares.push(...(command.middlewares ?? []));
+        const middlewares = this.pipelines.get(command.name) ?? [];
 
         const dispatch = async (index: number): Promise<void> => {
             const middleware = middlewares[index];
