@@ -155,7 +155,7 @@ export class FrameworkClient extends TypedEventEmitter {
         this.apiHelpers = new ApiHelpers(this.core.api);
         this.applicationId = options.applicationId ?? null;
 
-        new EventRouter(this.core, this);
+        new EventRouter(this.gateway, this.core.api, this);
 
         this.on('ready', (info: ReadyInfo) => {
             this.ready = true;
