@@ -656,7 +656,8 @@ were found by reading the *implementation* once it existed, and each one was
 reproduced with an executable test before being written down. The evidence in
 each entry is the captured output of that test.
 
-**Status: all open.** None of these have been fixed yet.
+**Status: all twelve applied** — see the commit table below. None of them
+are open.
 
 | ID | Severity | Area | Summary |
 |---|---|---|---|
@@ -672,6 +673,20 @@ each entry is the captured output of that test.
 | [F19](#f19-the-access-policy-does-not-cover-custom-actions) | **High** | `ui/menu` | The `access` policy is checked for navigation but not for custom action handlers, so anyone can trigger a step's own action. |
 | [F20](#f20-register-accepts-a-missing-state-and-stores-undefined) | Medium | `ui/router` | `register(widget)` without a state stores `undefined`, which crashes later with an unrelated-looking error. |
 | [F21](#f21-the-redis-store-uses-the-blocking-keys-command) | Medium | `store` | `RedisStore.keys()` issues Redis `KEYS`, which blocks the server, and the cache sweeps the whole keyspace on a timer. |
+
+The commit that applied each one:
+
+| ID | Applied in | Notes |
+|---|---|---|
+| F10, F11, F13, F19, F20 | `d1105ae` | The widget contract: a valid payload, a closed reserved namespace, the acknowledgement deadline, the access policy on every action, and a required state. |
+| F14, F15, F18 | `07dc8e5` | The command argument check follows the invoked branch and is recursive; `getFocused(true)` returns the option. |
+| F12 | `e26fea6` | `Object.hasOwn` replaces `in`, here and in the three other places the same pattern appeared. |
+| F16, F17, F21 | `1010046` | A guild index for the cache, and a cursor for the store so Redis is never asked for `KEYS`. |
+| — | `549eaa6` | The tests are now type-checked, which is what would have caught F10 and F20 before they ran. |
+
+Two of the fixes depart from the suggestion in the section below, because the
+suggestion would have introduced a new defect; the reasoning is recorded at
+the end of each section.
 
 The proof tests used to produce the evidence below were scratch files. They are
 reproduced inline so that each finding can be re-checked independently.
@@ -857,6 +872,28 @@ export function assertValidAction(action: string): void {
 That keeps the rule in one place and makes it impossible to bypass by
 constructing a spec literal.
 
+### What was applied, and why it differs
+
+Adding `assertValidAction()` to `createCustomId()` as suggested would break
+the framework's own chrome: the menu mints `~next`, `~previous`, `~back` and
+`~choice:<value>` through the same function. Relaxing the rule to "the
+marker may appear as the first character" — also suggested above — does not
+fix the defect either, because `~spoofed` still has the marker in first
+position, and the *known* reserved actions are still reachable from a user
+spec.
+
+The applied fix separates the two paths instead:
+
+- `createCustomId()` accepts **user actions only** and rejects the marker
+  anywhere.
+- `createReservedCustomId()` is the only path that mints a reserved action,
+  and it accepts only the closed set in `RESERVED_ACTIONS`.
+- The component specifications carry an explicit `reserved?: boolean`, which
+  only the framework's own chrome sets.
+
+The result: a hand-built spec cannot enter the reserved namespace at all, and
+a framework-owned one is checked against the closed set rather than trusted.
+
 ---
 
 ## F12: `PermissionsBitField.resolve` leaks `Object.prototype` keys
@@ -1003,6 +1040,25 @@ first when the handler has not.
 
 `Flow.onNavigation()`'s own `deferUpdate()` becomes redundant but harmless;
 it can stay or be removed.
+
+### What was applied, and why it differs
+
+Deferring *before* dispatching, as suggested, would break a handler that
+opens a modal: a deferral is a response, and Discord rejects a second
+response, so `createModal` after a `deferUpdate` fails. Most of the buttons
+that are not navigation chrome are exactly that kind.
+
+The applied fix keeps the guarantee without the regression: the router arms
+a deadline when it dispatches, and acknowledges on the handler's behalf if
+the handler has not answered when the deadline arrives.
+
+- A handler that answers quickly — by replying, deferring or opening a modal
+  — is untouched, because it answers before the deadline.
+- A handler that is slow is acknowledged at 2.5 seconds, which is inside the
+  three-second window, instead of failing silently.
+
+The deadline is `acknowledgeAfter` in the router options, so a test can set
+it to a few milliseconds and assert the behaviour without waiting.
 
 ---
 

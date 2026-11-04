@@ -113,11 +113,11 @@ commands.add({
             message as never,
         );
 
-        await router.register(
-            counter,
-            0,
-            { kind: 'channel', channelId, messageId: sent.id },
-        );
+        await router.register(counter, 0, {
+            kind: 'channel',
+            channelId,
+            messageId: sent.id,
+        });
 
         await interaction.editReply({ content: 'Look below.' });
     },
