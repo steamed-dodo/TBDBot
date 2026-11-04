@@ -51,18 +51,19 @@ export type {
     Widget,
 } from './types';
 
-export { Menu } from './menu/index';
+export { CHOICE_ACTION_PREFIX, Flow, Menu, Wizard } from './menu/index';
 export type {
     Choice,
+    FlowOptions,
+    FlowState,
     MenuAccess,
-    MenuCompleteHandler,
-    MenuMode,
     MenuNavigation,
     MenuOptions,
-    MenuState,
     Step,
     StepContent,
     StepContext,
+    WizardCompleteHandler,
+    WizardOptions,
 } from './menu/index';
 
 export { Modal, buildModalComponents, extractModalValues } from './modal/index';
@@ -74,5 +75,7 @@ export type {
     PanelFactory,
     PanelManagerOptions,
     PanelStore,
+    PersistentWidget,
     StoredPanel,
+    WidgetFactory,
 } from './panel/index';

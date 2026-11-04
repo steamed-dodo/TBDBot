@@ -115,9 +115,9 @@ export interface RenderedContent {
 /**
  * Context handed to a widget when an action is dispatched.
  */
-export interface ActionContext {
+export interface ActionContext<S = unknown> {
     /** The widget that received the action. */
-    readonly widget: Widget;
+    readonly widget: Widget<S>;
 
     /** The interaction that triggered the action. */
     readonly interaction: Interaction;
@@ -137,6 +137,24 @@ export interface ActionContext {
 
     /** The router that dispatched the action. */
     readonly router: WidgetRouter;
+
+    /**
+     * The state the widget currently holds.
+     *
+     * The widget never reads its own state implicitly: the framework holds
+     * the one true value and hands it back on every render.
+     */
+    readonly state: S;
+
+    /**
+     * Replaces the widget's state and repaints it.
+     *
+     * The next state is a full value, not a patch: the caller computes it
+     * however it likes, and the framework never holds a stale copy.
+     *
+     * @param next - The new state of the widget.
+     */
+    update(next: S): Promise<void>;
 }
 
 /**
@@ -150,9 +168,15 @@ export type NavigationAction = 'next' | 'previous' | 'back' | 'select';
 /**
  * A unit of state plus the way it is displayed.
  *
- * The important property of this interface is that `render()` may be called
- * from anywhere — a component interaction, a timer, a queue worker, another
- * process — because the widget is not tied to a collector's lifetime.
+ * The widget does not own its state: the framework holds the current value
+ * and passes it to {@link Widget.render} on every repaint. The widget is a
+ * pure function of that value, which is what makes it safe to replace the
+ * state rather than mutate it in place.
+ *
+ * The important property of this interface is that the repaint can be
+ * triggered from anywhere — a component interaction, a timer, a queue
+ * worker, another process — because the widget is not tied to a collector's
+ * lifetime.
  */
 export interface Widget<S = unknown> {
     /** Stable, user-facing identity of the widget. */
@@ -166,11 +190,12 @@ export interface Widget<S = unknown> {
      */
     readonly routingId: string;
 
-    /** Current state of the widget. */
-    readonly state: S;
-
-    /** Builds the content displayed by the widget. */
-    render(): RenderedContent | Promise<RenderedContent>;
+    /**
+     * Builds the content displayed by the widget.
+     *
+     * @param state - The current state of the widget.
+     */
+    render(state: S): RenderedContent | Promise<RenderedContent>;
 
     /**
      * Handles a user-defined action.
@@ -178,7 +203,7 @@ export interface Widget<S = unknown> {
      * @param action - The user-defined action, without the reserved prefix.
      * @param context - Context describing the triggering interaction.
      */
-    onAction?(action: string, context: ActionContext): void | Promise<void>;
+    onAction?(action: string, context: ActionContext<S>): void | Promise<void>;
 
     /**
      * Handles a reserved navigation action.
@@ -189,5 +214,8 @@ export interface Widget<S = unknown> {
      * @param action - The reserved navigation action.
      * @param context - Context describing the triggering interaction.
      */
-    onNavigation?(action: string, context: ActionContext): void | Promise<void>;
+    onNavigation?(
+        action: string,
+        context: ActionContext<S>,
+    ): void | Promise<void>;
 }

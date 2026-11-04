@@ -6,8 +6,9 @@ import { createInteraction } from '../../src/interaction/interaction';
 import { MockTransport } from '../../src/testing/mock';
 import { createComponentInteraction } from '../../src/testing/factories';
 import { Menu } from '../../src/ui/menu/Menu';
+import { Wizard } from '../../src/ui/menu/Wizard';
 import { WidgetRouter } from '../../src/ui/router';
-import type { Step } from '../../src/ui/menu/types';
+import type { FlowState, Step } from '../../src/ui/menu/types';
 
 function createApi(transport: MockTransport): API {
     const rest = new REST({ makeRequest: transport.makeRequest });
@@ -36,6 +37,9 @@ describe('menu', () => {
     let transport: MockTransport;
     let api: API;
     let router: WidgetRouter;
+
+    const state = (): FlowState =>
+        router.stateOf<FlowState>('menu123') as FlowState;
 
     beforeEach(() => {
         transport = new MockTransport();
@@ -81,7 +85,7 @@ describe('menu', () => {
             routingId: 'menu123',
         });
 
-        const content = await menu.render();
+        const content = await menu.render(menu.initialState());
 
         expect(content.content).toBe('first');
     });
@@ -93,7 +97,7 @@ describe('menu', () => {
             routingId: 'menu123',
         });
 
-        const content = await menu.render();
+        const content = await menu.render(menu.initialState());
         const row = content.components?.[0];
 
         expect(row?.[0]?.action).toBe('~previous');
@@ -107,7 +111,7 @@ describe('menu', () => {
             routingId: 'menu123',
         });
 
-        const content = await menu.render();
+        const content = await menu.render(menu.initialState());
         const row = content.components?.[0];
 
         expect(row?.[0]?.disabled).toBe(true);
@@ -122,7 +126,7 @@ describe('menu', () => {
             access: { type: 'everyone' },
         });
 
-        await router.register(menu as never);
+        await router.register(menu, null, menu.initialState());
 
         await router.handle(
             createInteraction(
@@ -131,7 +135,7 @@ describe('menu', () => {
             ),
         );
 
-        expect(menu.state.currentStepId).toBe('two');
+        expect(state().currentStepId).toBe('two');
     });
 
     it('goes back to the previous step', async () => {
@@ -142,8 +146,14 @@ describe('menu', () => {
             access: { type: 'everyone' },
         });
 
-        await router.register(menu as never);
-        await menu.setStep('two');
+        await router.register(menu, null, menu.initialState());
+
+        await router.handle(
+            createInteraction(
+                createComponentInteraction('ui:menu123:~next'),
+                api.interactions,
+            ),
+        );
 
         await router.handle(
             createInteraction(
@@ -152,7 +162,7 @@ describe('menu', () => {
             ),
         );
 
-        expect(menu.state.currentStepId).toBe('one');
+        expect(state().currentStepId).toBe('one');
     });
 
     it('sends the menu and registers it with the router', async () => {
@@ -171,6 +181,8 @@ describe('menu', () => {
             channelId: 'channel-1',
             messageId: 'message-1',
         });
+        expect(menu.messageId).toBe('message-1');
+        expect(menu.channelId).toBe('channel-1');
     });
 
     it('denies users that are not the owner', async () => {
@@ -182,7 +194,7 @@ describe('menu', () => {
             access: { type: 'caller-only' },
         });
 
-        await router.register(menu as never);
+        await router.register(menu, null, menu.initialState());
 
         await router.handle(
             createInteraction(
@@ -193,144 +205,166 @@ describe('menu', () => {
             ),
         );
 
-        expect(menu.state.currentStepId).toBe('one');
+        expect(state().currentStepId).toBe('one');
         expect(
             transport.requests.some((request) =>
                 request.url.includes('/callback'),
             ),
         ).toBe(true);
     });
+});
 
-    describe('wizard mode', () => {
-        const wizardSteps: readonly Step[] = [
-            {
-                id: 'language',
-                render: () => ({ content: 'pick a language' }),
-                choices: [
-                    { value: 'ts', label: 'TypeScript' },
-                    { value: 'js', label: 'JavaScript' },
-                ],
-                next: 'framework',
+describe('wizard', () => {
+    let transport: MockTransport;
+    let api: API;
+    let router: WidgetRouter;
+
+    const wizardSteps: readonly Step[] = [
+        {
+            id: 'language',
+            render: () => ({ content: 'pick a language' }),
+            choices: [
+                { value: 'ts', label: 'TypeScript' },
+                { value: 'js', label: 'JavaScript' },
+            ],
+            next: 'framework',
+        },
+        {
+            id: 'framework',
+            render: () => ({ content: 'pick a framework' }),
+            choices: [{ value: 'discord', label: 'discord.js' }],
+        },
+    ];
+
+    const state = (): FlowState =>
+        router.stateOf<FlowState>('wiz123') as FlowState;
+
+    beforeEach(() => {
+        transport = new MockTransport();
+        api = createApi(transport);
+        router = new WidgetRouter(api);
+    });
+
+    it('renders a back button', async () => {
+        const wizard = new Wizard({
+            api,
+            steps: wizardSteps,
+            routingId: 'wiz123',
+        });
+
+        const content = await wizard.render(wizard.initialState());
+        const row = content.components?.[content.components.length - 1];
+
+        expect(row?.[0]?.action).toBe('~back');
+    });
+
+    it('records the answer of the selected choice', async () => {
+        const wizard = new Wizard({
+            api,
+            steps: wizardSteps,
+            routingId: 'wiz123',
+            access: { type: 'everyone' },
+        });
+
+        await router.register(wizard, null, wizard.initialState());
+
+        await router.handle(
+            createInteraction(
+                createComponentInteraction('ui:wiz123:~choice:ts'),
+                api.interactions,
+            ),
+        );
+
+        expect(state().answers).toEqual({ language: 'ts' });
+        expect(state().currentStepId).toBe('framework');
+    });
+
+    it('completes the wizard when the last choice is picked', async () => {
+        const wizard = new Wizard({
+            api,
+            steps: wizardSteps,
+            routingId: 'wiz123',
+            access: { type: 'everyone' },
+        });
+
+        await router.register(wizard, null, wizard.initialState());
+
+        await router.handle(
+            createInteraction(
+                createComponentInteraction('ui:wiz123:~choice:ts'),
+                api.interactions,
+            ),
+        );
+
+        await router.handle(
+            createInteraction(
+                createComponentInteraction('ui:wiz123:~choice:discord'),
+                api.interactions,
+            ),
+        );
+
+        expect(state().completed).toBe(true);
+    });
+
+    it('clears abandoned answers when going back', async () => {
+        const wizard = new Wizard({
+            api,
+            steps: wizardSteps,
+            routingId: 'wiz123',
+            access: { type: 'everyone' },
+        });
+
+        await router.register(wizard, null, wizard.initialState());
+
+        await router.handle(
+            createInteraction(
+                createComponentInteraction('ui:wiz123:~choice:ts'),
+                api.interactions,
+            ),
+        );
+
+        expect(state().answers).toEqual({ language: 'ts' });
+
+        await router.handle(
+            createInteraction(
+                createComponentInteraction('ui:wiz123:~back'),
+                api.interactions,
+            ),
+        );
+
+        expect(state().currentStepId).toBe('language');
+        expect(state().answers).toEqual({});
+    });
+
+    it('calls the completion handler', async () => {
+        let completed = false;
+
+        const wizard = new Wizard({
+            api,
+            steps: wizardSteps,
+            routingId: 'wiz123',
+            access: { type: 'everyone' },
+            onComplete: () => {
+                completed = true;
             },
-            {
-                id: 'framework',
-                render: () => ({ content: 'pick a framework' }),
-                choices: [{ value: 'discord', label: 'discord.js' }],
-            },
-        ];
-
-        it('records the answer of the selected choice', async () => {
-            const menu = new Menu({
-                api,
-                steps: wizardSteps,
-                mode: 'wizard',
-                routingId: 'wiz123',
-                access: { type: 'everyone' },
-            });
-
-            await router.register(menu as never);
-
-            await router.handle(
-                createInteraction(
-                    createComponentInteraction('ui:wiz123:~choice:ts'),
-                    api.interactions,
-                ),
-            );
-
-            expect(menu.collectedAnswers).toEqual({ language: 'ts' });
-            expect(menu.state.currentStepId).toBe('framework');
         });
 
-        it('completes the wizard when the last choice is picked', async () => {
-            const menu = new Menu({
-                api,
-                steps: wizardSteps,
-                mode: 'wizard',
-                routingId: 'wiz123',
-                access: { type: 'everyone' },
-            });
+        await router.register(wizard, null, wizard.initialState());
 
-            await router.register(menu as never);
+        await router.handle(
+            createInteraction(
+                createComponentInteraction('ui:wiz123:~choice:ts'),
+                api.interactions,
+            ),
+        );
 
-            await router.handle(
-                createInteraction(
-                    createComponentInteraction('ui:wiz123:~choice:ts'),
-                    api.interactions,
-                ),
-            );
+        await router.handle(
+            createInteraction(
+                createComponentInteraction('ui:wiz123:~choice:discord'),
+                api.interactions,
+            ),
+        );
 
-            await router.handle(
-                createInteraction(
-                    createComponentInteraction('ui:wiz123:~choice:discord'),
-                    api.interactions,
-                ),
-            );
-
-            expect(menu.isCompleted).toBe(true);
-        });
-
-        it('clears abandoned answers when going back', async () => {
-            const menu = new Menu({
-                api,
-                steps: wizardSteps,
-                mode: 'wizard',
-                routingId: 'wiz123',
-                access: { type: 'everyone' },
-            });
-
-            await router.register(menu as never);
-
-            await router.handle(
-                createInteraction(
-                    createComponentInteraction('ui:wiz123:~choice:ts'),
-                    api.interactions,
-                ),
-            );
-
-            expect(menu.collectedAnswers).toEqual({ language: 'ts' });
-
-            await router.handle(
-                createInteraction(
-                    createComponentInteraction('ui:wiz123:~back'),
-                    api.interactions,
-                ),
-            );
-
-            expect(menu.state.currentStepId).toBe('language');
-            expect(menu.collectedAnswers).toEqual({});
-        });
-
-        it('calls the completion handler', async () => {
-            let completed = false;
-
-            const menu = new Menu({
-                api,
-                steps: wizardSteps,
-                mode: 'wizard',
-                routingId: 'wiz123',
-                access: { type: 'everyone' },
-                onComplete: () => {
-                    completed = true;
-                },
-            });
-
-            await router.register(menu as never);
-
-            await router.handle(
-                createInteraction(
-                    createComponentInteraction('ui:wiz123:~choice:ts'),
-                    api.interactions,
-                ),
-            );
-
-            await router.handle(
-                createInteraction(
-                    createComponentInteraction('ui:wiz123:~choice:discord'),
-                    api.interactions,
-                ),
-            );
-
-            expect(completed).toBe(true);
-        });
+        expect(completed).toBe(true);
     });
 });

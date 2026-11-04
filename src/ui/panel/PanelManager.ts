@@ -5,6 +5,7 @@ import type { MessageTarget } from '../messages';
 import { deleteTarget, editTarget, sendChannelMessage } from '../messages';
 import { renderContent } from '../render';
 import type { WidgetRouter } from '../router';
+import type { Widget } from '../types';
 import { PanelRegistry } from './PanelRegistry';
 import { MemoryPanelStore } from './PanelStore';
 import type { PanelStore, PersistentWidget, StoredPanel } from './types';
@@ -39,9 +40,9 @@ export interface PanelManagerOptions {
  * of live widgets in sync. On boot it restores the widgets, re-binding their
  * messages so that they keep routing correctly.
  *
- * The manager works with any widget that exposes a `type` and a
- * `serialize()` method, so a persistent menu is restored exactly like a
- * panel is.
+ * The manager works with any widget that exposes a `type`, a `serialize()`
+ * hook and a `restore()` hook, so a persistent menu is restored exactly like
+ * a panel is.
  */
 export class PanelManager {
     /** The REST facade used to send and edit panel messages. */
@@ -58,7 +59,7 @@ export class PanelManager {
 
     private readonly registry = new PanelRegistry();
 
-    private readonly panels = new Map<string, PersistentWidget>();
+    private readonly panels = new Map<string, PersistentWidget<unknown>>();
 
     private readonly records = new Map<string, StoredPanel>();
 
@@ -94,12 +95,12 @@ export class PanelManager {
      * @param id - ID of the panel.
      * @returns The panel, or `undefined` when it is not live.
      */
-    public get(id: string): PersistentWidget | undefined {
+    public get(id: string): PersistentWidget<unknown> | undefined {
         return this.panels.get(id);
     }
 
     /** Every panel currently managed. */
-    public get all(): readonly PersistentWidget[] {
+    public get all(): readonly PersistentWidget<unknown>[] {
         return [...this.panels.values()];
     }
 
@@ -132,12 +133,13 @@ export class PanelManager {
      * @param guildId - Guild containing the channel, when known.
      * @returns The ID of the created message.
      */
-    public async attach(
-        panel: PersistentWidget,
+    public async attach<S>(
+        panel: PersistentWidget<S>,
         channelId: string,
         guildId: string | null = null,
     ): Promise<string> {
-        const content = await panel.render();
+        const state = panel.restore(undefined);
+        const content = await panel.render(state);
         const message = renderContent(content, this.namespace, panel.routingId);
         const created = await sendChannelMessage(this.api, channelId, message);
 
@@ -145,13 +147,17 @@ export class PanelManager {
         panel.channelId = channelId;
         panel.guildId = guildId;
 
-        this.panels.set(panel.id, panel);
+        this.panels.set(panel.id, panel as PersistentWidget<unknown>);
 
-        await this.router.register(panel, {
-            kind: 'channel',
-            channelId,
-            messageId: created.id,
-        });
+        await this.router.register(
+            panel as WidgetOf<S>,
+            {
+                kind: 'channel',
+                channelId,
+                messageId: created.id,
+            },
+            state,
+        );
 
         await panel.onCreate?.();
 
@@ -165,12 +171,14 @@ export class PanelManager {
      *
      * @param panel - The panel to refresh.
      */
-    public async refresh(panel: PersistentWidget): Promise<void> {
+    public async refresh<S>(panel: PersistentWidget<S>): Promise<void> {
         if (!panel.messageId || !panel.channelId) {
             return;
         }
 
-        const content = await panel.render();
+        const state =
+            this.router.stateOf<S>(panel.routingId) ?? panel.restore(undefined);
+        const content = await panel.render(state);
         const message = renderContent(content, this.namespace, panel.routingId);
 
         await editTarget(
@@ -182,6 +190,8 @@ export class PanelManager {
             },
             message,
         );
+
+        await this.persist(panel, panel.guildId);
     }
 
     /**
@@ -190,8 +200,8 @@ export class PanelManager {
      * @param panel - The panel to remove.
      * @param options - Whether the message is deleted.
      */
-    public async remove(
-        panel: PersistentWidget,
+    public async remove<S>(
+        panel: PersistentWidget<S>,
         options: { readonly deleteMessage?: boolean } = {},
     ): Promise<void> {
         this.panels.delete(panel.id);
@@ -217,7 +227,7 @@ export class PanelManager {
      * @param panel - The panel.
      * @returns The target, or `null` when the panel is not attached.
      */
-    public targetOf(panel: PersistentWidget): MessageTarget | null {
+    public targetOf<S>(panel: PersistentWidget<S>): MessageTarget | null {
         if (!panel.messageId || !panel.channelId) {
             return null;
         }
@@ -243,10 +253,10 @@ export class PanelManager {
             return;
         }
 
-        let panel: PersistentWidget;
+        let panel: PersistentWidget<unknown>;
 
         try {
-            panel = await factory(record);
+            panel = (await factory(record)) as PersistentWidget<unknown>;
         } catch {
             await this.router.failQueued(
                 record.routingId,
@@ -264,20 +274,26 @@ export class PanelManager {
 
         this.panels.set(panel.id, panel);
 
-        await this.router.register(panel, {
-            kind: 'channel',
-            channelId: record.channelId,
-            messageId: record.messageId,
-        });
+        await this.router.register(
+            panel as WidgetOf<unknown>,
+            {
+                kind: 'channel',
+                channelId: record.channelId,
+                messageId: record.messageId,
+            },
+            panel.restore(record.data),
+        );
 
         await panel.onLoad?.();
     }
 
-    private async persist(
-        panel: PersistentWidget,
+    private async persist<S>(
+        panel: PersistentWidget<S>,
         guildId: string | null,
     ): Promise<void> {
-        const data = panel.serialize();
+        const state =
+            this.router.stateOf<S>(panel.routingId) ?? panel.restore(undefined);
+        const data = panel.serialize(state);
 
         const record: StoredPanel = {
             id: panel.id,
@@ -298,6 +314,8 @@ export class PanelManager {
         await this.store.save([...this.records.values()]);
     }
 }
+
+type WidgetOf<S> = Widget<S>;
 
 /**
  * Generates a routing id for a new panel.

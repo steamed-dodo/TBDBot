@@ -53,13 +53,22 @@ export interface WidgetRouterOptions {
     readonly queueTtl?: number;
 }
 
-/** A widget registered with the router, together with its message target. */
-export interface RegisteredWidget {
+/**
+ * A widget registered with the router.
+ *
+ * The registration holds the one true state value. The widget itself is
+ * stateless with respect to rendering: it is handed this value every time
+ * it is asked to render.
+ */
+export interface RegisteredWidget<S = unknown> {
     /** The registered widget. */
-    readonly widget: Widget;
+    readonly widget: Widget<S>;
+
+    /** The state the widget currently holds. */
+    state: S;
 
     /** Where the widget's message lives, when it has been sent. */
-    readonly target: MessageTarget | null;
+    target: MessageTarget | null;
 }
 
 interface QueuedInteraction {
@@ -75,7 +84,7 @@ interface QueuedInteraction {
  * widget keeps working no matter who triggered the interaction or when.
  */
 export class WidgetRouter {
-    private readonly widgets = new Map<string, RegisteredWidget>();
+    private readonly widgets = new Map<string, RegisteredWidget<unknown>>();
 
     private readonly expected = new Set<string>();
 
@@ -125,12 +134,19 @@ export class WidgetRouter {
      *
      * @param widget - The widget to register.
      * @param target - Where the widget's message lives, when it has been sent.
+     * @param state - The initial state of the widget.
      */
-    public async register(
-        widget: Widget,
+    public async register<S>(
+        widget: Widget<S>,
         target: MessageTarget | null = null,
+        state: S | undefined = undefined,
     ): Promise<void> {
-        this.widgets.set(widget.routingId, { widget, target });
+        this.widgets.set(widget.routingId, {
+            widget,
+            state: state as S,
+            target,
+        });
+
         this.expected.delete(widget.routingId);
 
         await this.drain(widget.routingId);
@@ -152,8 +168,43 @@ export class WidgetRouter {
      * @param routingId - Routing id of the widget.
      * @returns The widget, or `undefined` when it is not registered.
      */
-    public get(routingId: string): Widget | undefined {
+    public get(routingId: string): Widget<unknown> | undefined {
         return this.widgets.get(routingId)?.widget;
+    }
+
+    /**
+     * Reads the state a widget currently holds.
+     *
+     * @param routingId - Routing id of the widget.
+     * @returns The state, or `undefined` when the widget is not registered.
+     */
+    public stateOf<S>(routingId: string): S | undefined {
+        const registration = this.widgets.get(routingId);
+
+        return registration ? (registration.state as S) : undefined;
+    }
+
+    /**
+     * Replaces the state of a widget and repaints it.
+     *
+     * This is the entry point the "update from anywhere" promise refers to:
+     * it can be called from a component interaction, a timer, a queue worker,
+     * or another process, because the widget is not tied to a collector's
+     * lifetime.
+     *
+     * @param routingId - Routing id of the widget.
+     * @param next - The new state of the widget.
+     */
+    public async update<S>(routingId: string, next: S): Promise<void> {
+        const registration = this.widgets.get(routingId);
+
+        if (!registration) {
+            throw new Error(`Unknown widget: "${routingId}".`);
+        }
+
+        registration.state = next;
+
+        await this.refresh(routingId);
     }
 
     /**
@@ -201,10 +252,10 @@ export class WidgetRouter {
             return false;
         }
 
-        const registered = this.widgets.get(parsed.widgetId);
+        const registration = this.widgets.get(parsed.widgetId);
 
-        if (registered) {
-            await this.dispatch(registered.widget, parsed.action, interaction);
+        if (registration) {
+            await this.dispatch(registration, parsed.action, interaction);
 
             return true;
         }
@@ -219,24 +270,22 @@ export class WidgetRouter {
     }
 
     /**
-     * Re-renders a widget and pushes the result to its message.
-     *
-     * This is the property that separates the widget model from a
-     * collector: the update can be triggered from anywhere.
+     * Re-renders a widget with its current state and pushes the result to
+     * its message.
      *
      * @param routingId - Routing id of the widget.
      */
     public async refresh(routingId: string): Promise<void> {
-        const registered = this.widgets.get(routingId);
+        const registration = this.widgets.get(routingId);
 
-        if (!registered?.target) {
+        if (!registration?.target) {
             return;
         }
 
-        const content = await registered.widget.render();
+        const content = await registration.widget.render(registration.state);
         const message = renderContent(content, this.namespace, routingId);
 
-        await editTarget(this.api, registered.target, message);
+        await editTarget(this.api, registration.target, message);
     }
 
     /**
@@ -282,9 +331,9 @@ export class WidgetRouter {
 
         this.queues.delete(routingId);
 
-        const registered = this.widgets.get(routingId);
+        const registration = this.widgets.get(routingId);
 
-        if (!registered) {
+        if (!registration) {
             this.queuedCount -= queue.length;
 
             for (const entry of queue) {
@@ -311,38 +360,43 @@ export class WidgetRouter {
                 continue;
             }
 
-            await this.dispatch(
-                registered.widget,
-                parseCustomId(entry.interaction.customId ?? '')?.action ?? '',
-                entry.interaction,
-            );
+            const action =
+                parseCustomId(entry.interaction.customId ?? '')?.action ?? '';
+
+            await this.dispatch(registration, action, entry.interaction);
         }
     }
 
     private async dispatch(
-        widget: Widget,
+        registration: RegisteredWidget<unknown>,
         action: string,
         interaction: Interaction,
     ): Promise<void> {
-        const context: ActionContext = {
-            widget,
+        const context = {
+            widget: registration.widget,
             interaction,
             action,
             rawCustomId: interaction.customId ?? '',
             values: [...interaction.values],
             router: this,
-        };
+            state: registration.state,
+            update: async (next: unknown) => {
+                registration.state = next;
+
+                await this.refresh(registration.widget.routingId);
+            },
+        } as unknown as ActionContext<unknown>;
 
         try {
             const { reserved, name } = splitAction(action);
 
             if (reserved) {
-                await widget.onNavigation?.(name, context);
+                await registration.widget.onNavigation?.(name, context);
 
                 return;
             }
 
-            await widget.onAction?.(action, context);
+            await registration.widget.onAction?.(action, context);
         } catch (error) {
             await safeReply(
                 interaction,
@@ -471,7 +525,7 @@ async function safeReply(
             flags: MessageFlags.Ephemeral,
         });
     } catch {
-        // The interaction may have already been answered or expired.
+        // The interaction may already have been answered or expired.
     }
 }
 

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { MemoryPanelStore } from '../../src/ui/panel/PanelStore';
 import { PanelManager } from '../../src/ui/panel/PanelManager';
 import { Menu } from '../../src/ui/menu/Menu';
+import type { FlowState } from '../../src/ui/menu/types';
 import { Panel } from '../../src/ui/panel/Panel';
 import { WidgetRouter } from '../../src/ui/router';
 import { MockTransport } from '../../src/testing/mock';
@@ -199,8 +200,6 @@ describe('panel manager', () => {
             access: { type: 'everyone' },
         });
 
-        await menu.setStep('two');
-
         manager.define('menu', (record) => {
             const restored = new Menu({
                 api,
@@ -209,12 +208,20 @@ describe('panel manager', () => {
                 type: record.type,
             });
 
-            restored.restore(record.data as never);
+            restored.restore(record.data);
 
             return restored as never;
         });
 
         await manager.attach(menu as never, 'channel-1', 'guild-1');
+
+        await router.update('menu123', {
+            ...menu.initialState(),
+            currentStepId: 'two',
+            history: ['one', 'two'],
+        });
+
+        await manager.refresh(menu as never);
 
         const records = await store.load();
 
@@ -232,7 +239,7 @@ describe('panel manager', () => {
                 type: record.type,
             });
 
-            restored.restore(record.data as never);
+            restored.restore(record.data);
 
             return restored as never;
         });
@@ -242,7 +249,7 @@ describe('panel manager', () => {
         const restored = restoredManager.get(menu.id) as unknown as Menu;
 
         expect(restored).toBeDefined();
-        expect(restored.state.currentStepId).toBe('two');
+        expect(router.stateOf<FlowState>('menu123')?.currentStepId).toBe('two');
         expect(router.get('menu123')).toBe(restored);
     });
 });
