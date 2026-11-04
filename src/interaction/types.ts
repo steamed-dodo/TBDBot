@@ -16,6 +16,13 @@ import type {
 import type { APIInteraction } from 'discord-api-types/v10';
 
 /**
+ * How long an interaction token stays valid.
+ *
+ * @see https://discord.com/developers/docs/interactions/receiving-and-responding#security-and-authorization
+ */
+export const INTERACTION_TOKEN_TTL = 15 * 60 * 1000;
+
+/**
  * Body accepted by {@link Interaction.reply}.
  *
  * The framework owns the response `type`; callers only describe the message
@@ -111,6 +118,14 @@ export interface Interaction {
 
     /** Continuation token used to respond to the interaction. */
     readonly token: string;
+
+    /**
+     * The moment the interaction token stops being valid.
+     *
+     * After that the interaction can no longer be responded to, and an
+     * ephemeral message can no longer be edited.
+     */
+    readonly expiresAt: number;
 
     /** ID of the application the interaction targets. */
     readonly applicationId: string;

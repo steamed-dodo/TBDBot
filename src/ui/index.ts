@@ -29,6 +29,7 @@ export {
     select,
 } from './render';
 export type { RenderDefaults, RenderedMessage } from './render';
+export { MessageExpiredError } from './errors';
 export {
     DEFAULT_MAX_QUEUED_PER_WIDGET,
     DEFAULT_MAX_QUEUED_TOTAL,
