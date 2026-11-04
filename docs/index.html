@@ -1,0 +1,178 @@
+<!DOCTYPE html><html class="default" lang="en" data-base="./"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>tbdbot</title><meta name="description" content="Documentation for tbdbot"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="assets/style.css"/><link rel="stylesheet" href="assets/highlight.css"/><script defer src="assets/main.js"></script><script async src="assets/icons.js" id="tsd-icons-script"></script><script async src="assets/search.js" id="tsd-search-script"></script><script async src="assets/navigation.js" id="tsd-nav-script"></script><script async src="assets/hierarchy.js" id="tsd-hierarchy-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar">
+<div class="tsd-toolbar-contents container"><a href="index.html" class="title">tbdbot</a>
+<div id="tsd-toolbar-links"></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/>
+<ul role="listbox" id="tsd-search-results"></ul>
+<div id="tsd-search-status" aria-live="polite" aria-atomic="true">
+<div>Preparing search index...</div></div></dialog><a href="#" class="tsd-widget menu" id="tsd-toolbar-menu-trigger" data-toggle="menu" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-menu"></use></svg></a></div></header>
+<div class="container container-main">
+<div class="col-content">
+<div class="tsd-page-title">
+<h1>tbdbot</h1></div>
+<div class="tsd-panel tsd-typography"><h1 id="tbdbot" class="tsd-anchor-link">TBDBot<a href="#tbdbot" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h1>
+<p><strong>TBDBot</strong> — a Discord bot framework built on <a href="https://github.com/discordjs/discord.js/tree/main/packages/core"><code>@discordjs/core</code></a>.</p>
+<p>The framework covers the whole bot lifecycle: client and gateway wiring, typed
+events, commands and middleware, configuration, caching, persistence, metrics,
+and interactive UI primitives. It deliberately does <strong>not</strong> depend on
+<code>discord.js</code>: there is no cache manager, no sweepers, and no <code>Collection</code>, so a
+long-running bot no longer accumulates a guild/member graph.</p>
+<h2 id="installation" class="tsd-anchor-link">Installation<a href="#installation" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code class="sh"><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-2">install</span><span class="hl-1"> </span><span class="hl-2">tbdbot</span>
+</code><button type="button">Copy</button></pre>
+
+<h2 id="at-a-glance" class="tsd-anchor-link">At a glance<a href="#at-a-glance" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code class="ts"><span class="hl-3">import</span><span class="hl-1"> {</span><br/><span class="hl-1">    </span><span class="hl-4">FrameworkClient</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-4">Menu</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-4">WidgetRouter</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-4">Wizard</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-4">button</span><span class="hl-1">,</span><br/><span class="hl-1">} </span><span class="hl-3">from</span><span class="hl-1"> </span><span class="hl-2">&#39;tbdbot&#39;</span><span class="hl-1">;</span><br/><br/><span class="hl-5">const</span><span class="hl-1"> </span><span class="hl-6">client</span><span class="hl-1"> = </span><span class="hl-5">new</span><span class="hl-1"> </span><span class="hl-0">FrameworkClient</span><span class="hl-1">({ </span><span class="hl-4">token:</span><span class="hl-1"> </span><span class="hl-4">process</span><span class="hl-1">.</span><span class="hl-4">env</span><span class="hl-1">.</span><span class="hl-6">BOT_TOKEN</span><span class="hl-1">! });</span><br/><span class="hl-5">const</span><span class="hl-1"> </span><span class="hl-6">router</span><span class="hl-1"> = </span><span class="hl-5">new</span><span class="hl-1"> </span><span class="hl-0">WidgetRouter</span><span class="hl-1">(</span><span class="hl-4">client</span><span class="hl-1">.</span><span class="hl-4">api</span><span class="hl-1">);</span><br/><br/><span class="hl-4">client</span><span class="hl-1">.</span><span class="hl-0">on</span><span class="hl-1">(</span><span class="hl-2">&#39;interactionCreate&#39;</span><span class="hl-1">, </span><span class="hl-5">async</span><span class="hl-1"> (</span><span class="hl-4">interaction</span><span class="hl-1">) </span><span class="hl-5">=&gt;</span><span class="hl-1"> {</span><br/><span class="hl-1">    </span><span class="hl-3">if</span><span class="hl-1"> (</span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-4">router</span><span class="hl-1">.</span><span class="hl-0">handle</span><span class="hl-1">(</span><span class="hl-4">interaction</span><span class="hl-1">)) {</span><br/><span class="hl-1">        </span><span class="hl-3">return</span><span class="hl-1">;</span><br/><span class="hl-1">    }</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-5">const</span><span class="hl-1"> </span><span class="hl-6">wizard</span><span class="hl-1"> = </span><span class="hl-5">new</span><span class="hl-1"> </span><span class="hl-0">Wizard</span><span class="hl-1">({</span><br/><span class="hl-1">    </span><span class="hl-4">api:</span><span class="hl-1"> </span><span class="hl-4">client</span><span class="hl-1">.</span><span class="hl-4">api</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-4">userId:</span><span class="hl-1"> </span><span class="hl-4">interaction</span><span class="hl-1">.</span><span class="hl-4">userId</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-4">steps:</span><span class="hl-1"> [</span><br/><span class="hl-1">        {</span><br/><span class="hl-1">            </span><span class="hl-4">id:</span><span class="hl-1"> </span><span class="hl-2">&#39;language&#39;</span><span class="hl-1">,</span><br/><span class="hl-1">            </span><span class="hl-0">render</span><span class="hl-4">:</span><span class="hl-1"> () </span><span class="hl-5">=&gt;</span><span class="hl-1"> ({ </span><span class="hl-4">content:</span><span class="hl-1"> </span><span class="hl-2">&#39;Pick a language&#39;</span><span class="hl-1"> }),</span><br/><span class="hl-1">            </span><span class="hl-4">choices:</span><span class="hl-1"> [</span><br/><span class="hl-1">                { </span><span class="hl-4">value:</span><span class="hl-1"> </span><span class="hl-2">&#39;ts&#39;</span><span class="hl-1">, </span><span class="hl-4">label:</span><span class="hl-1"> </span><span class="hl-2">&#39;TypeScript&#39;</span><span class="hl-1"> },</span><br/><span class="hl-1">                { </span><span class="hl-4">value:</span><span class="hl-1"> </span><span class="hl-2">&#39;js&#39;</span><span class="hl-1">, </span><span class="hl-4">label:</span><span class="hl-1"> </span><span class="hl-2">&#39;JavaScript&#39;</span><span class="hl-1"> },</span><br/><span class="hl-1">            ],</span><br/><span class="hl-1">            </span><span class="hl-4">next:</span><span class="hl-1"> </span><span class="hl-2">&#39;done&#39;</span><span class="hl-1">,</span><br/><span class="hl-1">        },</span><br/><span class="hl-1">        {</span><br/><span class="hl-1">            </span><span class="hl-4">id:</span><span class="hl-1"> </span><span class="hl-2">&#39;done&#39;</span><span class="hl-1">,</span><br/><span class="hl-1">            </span><span class="hl-0">render</span><span class="hl-4">:</span><span class="hl-1"> ({ </span><span class="hl-4">answers</span><span class="hl-1"> }) </span><span class="hl-5">=&gt;</span><span class="hl-1"> ({</span><br/><span class="hl-1">                </span><span class="hl-4">components:</span><span class="hl-1"> [[</span><span class="hl-0">button</span><span class="hl-1">(</span><span class="hl-2">&#39;restart&#39;</span><span class="hl-1">, </span><span class="hl-2">&#39;Start over&#39;</span><span class="hl-1">, { </span><span class="hl-4">style:</span><span class="hl-1"> </span><span class="hl-7">2</span><span class="hl-1"> })]],</span><br/><span class="hl-1">                </span><span class="hl-4">content:</span><span class="hl-1"> </span><span class="hl-2">`You picked </span><span class="hl-5">${</span><span class="hl-4">answers</span><span class="hl-8">[</span><span class="hl-2">&#39;language&#39;</span><span class="hl-8">]</span><span class="hl-5">}</span><span class="hl-2">`</span><span class="hl-1">,</span><br/><span class="hl-1">            }),</span><br/><span class="hl-1">        },</span><br/><span class="hl-1">    ],</span><br/><span class="hl-1">    </span><span class="hl-0">onComplete</span><span class="hl-4">:</span><span class="hl-1"> ({ </span><span class="hl-4">answers</span><span class="hl-1"> }) </span><span class="hl-5">=&gt;</span><span class="hl-1"> </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">answers</span><span class="hl-1">),</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-4">wizard</span><span class="hl-1">.</span><span class="hl-0">reply</span><span class="hl-1">(</span><span class="hl-4">interaction</span><span class="hl-1">, { </span><span class="hl-4">ephemeral:</span><span class="hl-1"> </span><span class="hl-5">true</span><span class="hl-1"> }, </span><span class="hl-4">router</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<h2 id="modules" class="tsd-anchor-link">Modules<a href="#modules" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<h3 id="core" class="tsd-anchor-link">Core<a href="#core" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>FrameworkClient</code> owns the <code>REST</code> instance, the gateway, and the connect and
+destroy lifecycle. It translates the raw gateway dispatches into friendly,
+typed events:</p>
+<pre><code class="ts"><span class="hl-4">client</span><span class="hl-1">.</span><span class="hl-0">on</span><span class="hl-1">(</span><span class="hl-2">&#39;ready&#39;</span><span class="hl-1">, (</span><span class="hl-4">info</span><span class="hl-1">) </span><span class="hl-5">=&gt;</span><span class="hl-1"> </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">info</span><span class="hl-1">.</span><span class="hl-4">applicationId</span><span class="hl-1">));</span><br/><span class="hl-4">client</span><span class="hl-1">.</span><span class="hl-0">on</span><span class="hl-1">(</span><span class="hl-2">&#39;messageCreate&#39;</span><span class="hl-1">, (</span><span class="hl-4">message</span><span class="hl-1">) </span><span class="hl-5">=&gt;</span><span class="hl-1"> </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">message</span><span class="hl-1">.</span><span class="hl-4">raw</span><span class="hl-1">));</span><br/><span class="hl-4">client</span><span class="hl-1">.</span><span class="hl-0">on</span><span class="hl-1">(</span><span class="hl-2">&#39;guildRoleUpdate&#39;</span><span class="hl-1">, (</span><span class="hl-4">event</span><span class="hl-1">) </span><span class="hl-5">=&gt;</span><span class="hl-1"> </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">event</span><span class="hl-1">.</span><span class="hl-4">roleId</span><span class="hl-1">));</span>
+</code><button type="button">Copy</button></pre>
+
+<p>Shutdown is ordered deliberately: interactions stop being accepted, the
+registered shutdown tasks run (flush metrics, close stores), and only then is
+the gateway destroyed.</p>
+<h3 id="interactions" class="tsd-anchor-link">Interactions<a href="#interactions" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>An interaction is plain data plus a thin set of helpers. There is no class
+hierarchy and no cache: the payload Discord sent stays exactly as it was.</p>
+<pre><code class="ts"><span class="hl-4">interaction</span><span class="hl-1">.</span><span class="hl-0">reply</span><span class="hl-1">({ </span><span class="hl-4">content:</span><span class="hl-1"> </span><span class="hl-2">&#39;Hello&#39;</span><span class="hl-1"> });</span><br/><span class="hl-4">interaction</span><span class="hl-1">.</span><span class="hl-0">defer</span><span class="hl-1">();</span><br/><span class="hl-4">interaction</span><span class="hl-1">.</span><span class="hl-0">deferUpdate</span><span class="hl-1">();</span><br/><span class="hl-4">interaction</span><span class="hl-1">.</span><span class="hl-0">editReply</span><span class="hl-1">({ </span><span class="hl-4">content:</span><span class="hl-1"> </span><span class="hl-2">&#39;Edited&#39;</span><span class="hl-1"> });</span><br/><span class="hl-4">interaction</span><span class="hl-1">.</span><span class="hl-0">followUp</span><span class="hl-1">({ </span><span class="hl-4">content:</span><span class="hl-1"> </span><span class="hl-2">&#39;Follow-up&#39;</span><span class="hl-1"> });</span><br/><span class="hl-4">interaction</span><span class="hl-1">.</span><span class="hl-0">createModal</span><span class="hl-1">({ </span><span class="hl-4">customId</span><span class="hl-1">, </span><span class="hl-4">title</span><span class="hl-1">, </span><span class="hl-4">components</span><span class="hl-1"> });</span>
+</code><button type="button">Copy</button></pre>
+
+<p>Permission bitfields are <code>bigint</code>, because Discord's values exceed
+<code>Number.MAX_SAFE_INTEGER</code>.</p>
+<h3 id="permissions" class="tsd-anchor-link">Permissions<a href="#permissions" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>PermissionsBitField</code> is <code>bigint</code>-backed, and <code>resolvePermissions</code> applies the
+guild roles, the channel overwrites, and the member overwrite in Discord's
+documented order.</p>
+<pre><code class="ts"><span class="hl-5">const</span><span class="hl-1"> { </span><span class="hl-6">channel</span><span class="hl-1"> } = </span><span class="hl-0">resolvePermissions</span><span class="hl-1">({ </span><span class="hl-4">guild</span><span class="hl-1">, </span><span class="hl-4">roles</span><span class="hl-1">, </span><span class="hl-4">member</span><span class="hl-1">, </span><span class="hl-4">channel</span><span class="hl-1"> });</span><br/><br/><span class="hl-4">channel</span><span class="hl-1">.</span><span class="hl-0">has</span><span class="hl-1">(</span><span class="hl-4">PermissionsBitField</span><span class="hl-1">.</span><span class="hl-4">Flags</span><span class="hl-1">.</span><span class="hl-4">ManageGuild</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="ui" class="tsd-anchor-link">UI<a href="#ui" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>The UI layer is a widget engine: a widget is a unit of state plus the way it
+is displayed, and the router resolves an incoming <code>custom_id</code> to a widget and
+an action.</p>
+<p>A widget does <strong>not</strong> own its state. The framework holds the one true value
+and hands it back to <code>render(state)</code> on every repaint, so replacing the state
+is always safe:</p>
+<pre><code class="ts"><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-4">router</span><span class="hl-1">.</span><span class="hl-0">update</span><span class="hl-1">(</span><span class="hl-4">routingId</span><span class="hl-1">, </span><span class="hl-4">nextState</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<ul>
+<li><strong><code>Menu</code></strong> — a linear, paginated menu with previous/next chrome.</li>
+<li><strong><code>Wizard</code></strong> — a branching, choice-driven flow that captures answers and
+can go back.</li>
+<li><strong><code>Panel</code></strong> — a persistent widget, restored at boot from a store.</li>
+<li><strong><code>Modal</code></strong> — a widget with a different render target, routed by its
+<code>custom_id</code>.</li>
+<li><strong><code>WidgetRouter</code></strong> — resolves custom ids, dispatches actions, and queues
+interactions that arrive before a persistent widget has been restored.</li>
+</ul>
+<p><code>Menu</code> and <code>Wizard</code> are separate classes over a shared <code>Flow</code> base rather
+than one class with a mode flag: what makes a menu a menu and a wizard a
+wizard is how their steps are traversed, and that is a difference in the
+state transitions.</p>
+<p>Custom ids are framework-owned strings in the shape
+<code>&lt;namespace&gt;:&lt;widgetId&gt;:&lt;action&gt;</code>. Use the <code>button()</code> and <code>select()</code> helpers
+rather than raw builders: the framework mints the <code>custom_id</code>, and the
+routing id is short so that the 100-character budget is mostly left for your
+actions.</p>
+<pre><code class="ts"><span class="hl-0">button</span><span class="hl-1">(</span><span class="hl-2">&#39;confirm&#39;</span><span class="hl-1">, </span><span class="hl-2">&#39;Confirm&#39;</span><span class="hl-1">, { </span><span class="hl-4">style:</span><span class="hl-1"> </span><span class="hl-4">ButtonStyle</span><span class="hl-1">.</span><span class="hl-4">Success</span><span class="hl-1"> });</span><br/><span class="hl-0">select</span><span class="hl-1">(</span><span class="hl-2">&#39;pick&#39;</span><span class="hl-1">, [{ </span><span class="hl-4">label:</span><span class="hl-1"> </span><span class="hl-2">&#39;One&#39;</span><span class="hl-1">, </span><span class="hl-4">value:</span><span class="hl-1"> </span><span class="hl-2">&#39;one&#39;</span><span class="hl-1"> }]);</span>
+</code><button type="button">Copy</button></pre>
+
+<blockquote>
+<p><strong>An ephemeral message can only be edited for 15 minutes.</strong> An interaction
+token is valid for that long, and an ephemeral message lives on the
+interaction webhook. Updating one past that point throws
+<code>MessageExpiredError</code> rather than making a doomed request. A widget that
+needs long-lived updates should be delivered to a channel instead.</p>
+</blockquote>
+<h3 id="commands" class="tsd-anchor-link">Commands<a href="#commands" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>The builder stays the source of truth. At registration time the framework
+derives the option schema from it, validates the schema, and at invocation
+time validates the incoming options against it and produces a plain <code>args</code>
+record.</p>
+<pre><code class="ts"><span class="hl-4">manager</span><span class="hl-1">.</span><span class="hl-0">add</span><span class="hl-1">({</span><br/><span class="hl-1">    </span><span class="hl-4">name:</span><span class="hl-1"> </span><span class="hl-2">&#39;ban&#39;</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-4">description:</span><span class="hl-1"> </span><span class="hl-2">&#39;Ban a member&#39;</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-4">builder:</span><span class="hl-1"> </span><span class="hl-5">new</span><span class="hl-1"> </span><span class="hl-0">SlashCommandBuilder</span><span class="hl-1">()</span><br/><span class="hl-1">        .</span><span class="hl-0">setName</span><span class="hl-1">(</span><span class="hl-2">&#39;ban&#39;</span><span class="hl-1">)</span><br/><span class="hl-1">        .</span><span class="hl-0">setDescription</span><span class="hl-1">(</span><span class="hl-2">&#39;Ban a member&#39;</span><span class="hl-1">)</span><br/><span class="hl-1">        .</span><span class="hl-0">addUserOption</span><span class="hl-1">((</span><span class="hl-4">option</span><span class="hl-1">) </span><span class="hl-5">=&gt;</span><span class="hl-1"> </span><span class="hl-4">option</span><span class="hl-1">.</span><span class="hl-0">setName</span><span class="hl-1">(</span><span class="hl-2">&#39;target&#39;</span><span class="hl-1">).</span><span class="hl-0">setDescription</span><span class="hl-1">(</span><span class="hl-2">&#39;The member&#39;</span><span class="hl-1">)),</span><br/><span class="hl-1">    </span><span class="hl-4">permissions:</span><span class="hl-1"> </span><span class="hl-4">PermissionsBitField</span><span class="hl-1">.</span><span class="hl-4">Flags</span><span class="hl-1">.</span><span class="hl-4">BanMembers</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-4">cooldown:</span><span class="hl-1"> </span><span class="hl-7">5000</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-0">execute</span><span class="hl-4">:</span><span class="hl-1"> ({ </span><span class="hl-4">args</span><span class="hl-1"> }) </span><span class="hl-5">=&gt;</span><span class="hl-1"> </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">args</span><span class="hl-1">.</span><span class="hl-4">target</span><span class="hl-1">),</span><br/><span class="hl-1">});</span>
+</code><button type="button">Copy</button></pre>
+
+<p>Middleware wraps the handler and replaces the hand-rolled <code>if</code> ladders:
+<code>guildOnlyMiddleware</code>, <code>ownerOnlyMiddleware</code>, <code>permissionMiddleware</code> and
+<code>cooldownMiddleware</code>.</p>
+<h3 id="config" class="tsd-anchor-link">Config<a href="#config" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Schema-based, environment-aware, and validated once at startup. Secrets are
+redacted when the configuration is logged.</p>
+<pre><code class="ts"><span class="hl-5">const</span><span class="hl-1"> { </span><span class="hl-6">values</span><span class="hl-1"> } = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-0">loadConfig</span><span class="hl-1">(</span><br/><span class="hl-1">    {</span><br/><span class="hl-1">        </span><span class="hl-4">token:</span><span class="hl-1"> { </span><span class="hl-4">type:</span><span class="hl-1"> </span><span class="hl-2">&#39;string&#39;</span><span class="hl-1">, </span><span class="hl-4">required:</span><span class="hl-1"> </span><span class="hl-5">true</span><span class="hl-1">, </span><span class="hl-4">secret:</span><span class="hl-1"> </span><span class="hl-5">true</span><span class="hl-1">, </span><span class="hl-4">env:</span><span class="hl-1"> </span><span class="hl-2">&#39;BOT_TOKEN&#39;</span><span class="hl-1"> },</span><br/><span class="hl-1">        </span><span class="hl-4">prefix:</span><span class="hl-1"> { </span><span class="hl-4">type:</span><span class="hl-1"> </span><span class="hl-2">&#39;string&#39;</span><span class="hl-1">, </span><span class="hl-4">default:</span><span class="hl-1"> </span><span class="hl-2">&#39;!&#39;</span><span class="hl-1"> },</span><br/><span class="hl-1">    },</span><br/><span class="hl-1">    [</span><span class="hl-0">envSource</span><span class="hl-1">(), </span><span class="hl-0">fileSource</span><span class="hl-1">(</span><span class="hl-2">&#39;./config.json&#39;</span><span class="hl-1">)],</span><br/><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="cache" class="tsd-anchor-link">Cache<a href="#cache" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Caching is opt-in and deliberate. The minimal tier is on by default and holds
+only the two lookups permission checks need: the guild roles and the channel
+overwrites. The inclusive tier adds the caches <code>discord.js</code> keeps, with the
+same limits, and is never enabled implicitly.</p>
+<pre><code class="ts"><span class="hl-5">const</span><span class="hl-1"> </span><span class="hl-6">cache</span><span class="hl-1"> = </span><span class="hl-5">new</span><span class="hl-1"> </span><span class="hl-0">Cache</span><span class="hl-1">({ </span><span class="hl-4">tier:</span><span class="hl-1"> </span><span class="hl-2">&#39;inclusive&#39;</span><span class="hl-1"> });</span><br/><span class="hl-0">attachCacheInvalidation</span><span class="hl-1">(</span><span class="hl-4">client</span><span class="hl-1">, </span><span class="hl-4">cache</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="stores" class="tsd-anchor-link">Stores<a href="#stores" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>MemoryStore</code>, <code>JsonFileStore</code> and <code>RedisStore</code> implement the same plain
+key-value contract. The Redis client is injected, so the framework does not
+depend on a particular driver.</p>
+<h3 id="metrics" class="tsd-anchor-link">Metrics<a href="#metrics" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>The Prometheus text exposition is hand-rolled, so the label sets are exactly
+what the framework controls. The framework never owns a port: it exposes a
+mountable handler instead.</p>
+<pre><code class="ts"><span class="hl-5">const</span><span class="hl-1"> </span><span class="hl-6">metrics</span><span class="hl-1"> = </span><span class="hl-5">new</span><span class="hl-1"> </span><span class="hl-0">FrameworkMetrics</span><span class="hl-1">();</span><br/><br/><span class="hl-4">http</span><span class="hl-1">.</span><span class="hl-0">createServer</span><span class="hl-1">(</span><span class="hl-4">metrics</span><span class="hl-1">.</span><span class="hl-0">handler</span><span class="hl-1">().</span><span class="hl-4">listener</span><span class="hl-1">).</span><span class="hl-0">listen</span><span class="hl-1">(</span><span class="hl-7">9090</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="testing" class="tsd-anchor-link">Testing<a href="#testing" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Every layer that touches Discord is exercised through raw payloads and an
+injectable transport, so the whole framework is testable without a network.</p>
+<pre><code class="ts"><span class="hl-5">const</span><span class="hl-1"> </span><span class="hl-6">mock</span><span class="hl-1"> = </span><span class="hl-0">createMockClient</span><span class="hl-1">();</span><br/><br/><span class="hl-4">mock</span><span class="hl-1">.</span><span class="hl-0">dispatch</span><span class="hl-1">(</span><span class="hl-2">&#39;READY&#39;</span><span class="hl-1">, { </span><span class="hl-4">application:</span><span class="hl-1"> { </span><span class="hl-4">id:</span><span class="hl-1"> </span><span class="hl-2">&#39;app-1&#39;</span><span class="hl-1"> } });</span>
+</code><button type="button">Copy</button></pre>
+
+<h2 id="development" class="tsd-anchor-link">Development<a href="#development" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code class="sh"><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">typecheck</span><br/><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-2">test</span><br/><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">build</span>
+</code><button type="button">Copy</button></pre>
+
+<h2 id="license" class="tsd-anchor-link">License<a href="#license" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>No license has been chosen yet. The package is private for now.</p>
+</div></div>
+<div class="col-sidebar">
+<div class="page-menu">
+<div class="tsd-navigation settings">
+<details class="tsd-accordion"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-chevronDown"></use></svg>
+<h3>Settings</h3></summary>
+<div class="tsd-accordion-details">
+<div class="tsd-filter-visibility"><span class="settings-label">Member Visibility</span>
+<ul id="tsd-filter-options">
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-protected" name="protected"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Protected</span></label></li>
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-inherited" name="inherited" checked/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Inherited</span></label></li>
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-external" name="external"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>External</span></label></li></ul></div>
+<div class="tsd-theme-toggle"><label class="settings-label" for="tsd-theme">Theme</label><select id="tsd-theme"><option value="os">OS</option><option value="light">Light</option><option value="dark">Dark</option></select></div></div></details></div>
+<details open class="tsd-accordion tsd-page-navigation"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-chevronDown"></use></svg>
+<h3>On This Page</h3></summary>
+<div class="tsd-accordion-details"><a href="#tbdbot"><span>TBD<wbr/>Bot</span></a>
+<ul>
+<li><a href="#installation"><span>Installation</span></a></li>
+<li><a href="#at-a-glance"><span>At a glance</span></a></li>
+<li><a href="#modules"><span>Modules</span></a></li>
+<li>
+<ul>
+<li><a href="#core"><span>Core</span></a></li>
+<li><a href="#interactions"><span>Interactions</span></a></li>
+<li><a href="#permissions"><span>Permissions</span></a></li>
+<li><a href="#ui"><span>UI</span></a></li>
+<li><a href="#commands"><span>Commands</span></a></li>
+<li><a href="#config"><span>Config</span></a></li>
+<li><a href="#cache"><span>Cache</span></a></li>
+<li><a href="#stores"><span>Stores</span></a></li>
+<li><a href="#metrics"><span>Metrics</span></a></li>
+<li><a href="#testing"><span>Testing</span></a></li></ul></li>
+<li><a href="#development"><span>Development</span></a></li>
+<li><a href="#license"><span>License</span></a></li></ul></div></details></div>
+<div class="site-menu">
+<nav class="tsd-navigation"><a href="modules.html">tbdbot</a>
+<ul class="tsd-small-nested-navigation" id="tsd-nav-container">
+<li>Loading...</li></ul></nav></div></div></div><footer>
+<p class="tsd-generator">Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></footer>
+<div class="overlay"></div></body></html>
