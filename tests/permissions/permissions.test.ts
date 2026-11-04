@@ -70,7 +70,7 @@ describe('permissions bitfield', () => {
                 'valueOf',
                 'hasOwnProperty',
             ]) {
-                expect(typeof PermissionsBitField.resolve(name)).toBe('bigint');
+                expect(PermissionsBitField.resolve(name)).toBe(0n);
             }
         });
 

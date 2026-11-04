@@ -32,6 +32,17 @@ describe('metrics registry', () => {
         expect(registry.expose()).toContain('bot_heap_used_bytes 1024');
     });
 
+    it('escapes label values in the exposition', () => {
+        const registry = new MetricRegistry();
+        const gauge = registry.gauge('bot_test_gauge', 'Test.', ['name']);
+
+        gauge.set(1, { name: 'a"b\\c\nd' });
+
+        expect(registry.expose()).toContain(
+            'bot_test_gauge{name="a\\"b\\\\c\\nd"} 1',
+        );
+    });
+
     it('renders a histogram with cumulative buckets', () => {
         const registry = new MetricRegistry();
         const histogram = registry.histogram(
@@ -145,6 +156,19 @@ describe('metrics handler', () => {
         expect(response.status).toBe(200);
         expect(response.body).toBe('ok');
     });
+
+    it('serves the exposition on a custom path', async () => {
+        const registry = new MetricRegistry();
+        registry.counter('bot_test_total', 'Test.').inc();
+
+        const handler = createMetricsHandler(registry, { path: '/custom' });
+
+        const response = await invoke(handler.listener, '/custom');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toContain('bot_test_total 1');
+        expect((await invoke(handler.listener, '/metrics')).status).toBe(404);
+    });
 });
 
 interface FakeResponse {
@@ -162,7 +186,7 @@ async function invoke(
             ) => void;
             end: (body?: string) => void;
         },
-    ) => void,
+    ) => void | Promise<void>,
     url: string,
 ): Promise<FakeResponse> {
     const response: FakeResponse & {
@@ -179,7 +203,7 @@ async function invoke(
         },
     };
 
-    listener({ url }, response);
+    await listener({ url }, response);
 
     return response;
 }

@@ -1,6 +1,6 @@
 import { API } from '@discordjs/core';
 import { REST } from '@discordjs/rest';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Interaction } from '../../src/interaction/types';
 import { createInteraction } from '../../src/interaction/interaction';
@@ -196,6 +196,7 @@ describe('widget router', () => {
             const bounded = new WidgetRouter(api, {
                 maxQueuedTotal: 1,
             });
+            const widget = createWidget('bbb');
 
             bounded.expect('aaa');
             bounded.expect('bbb');
@@ -208,6 +209,13 @@ describe('widget router', () => {
             );
 
             expect(bounded.pendingCount).toBe(1);
+
+            // Draining the newer widget proves which interaction survived:
+            // registering it replays the queued action, and only that action.
+            await bounded.register(widget, undefined);
+
+            expect(widget.actions).toEqual(['two']);
+            expect(bounded.pendingCount).toBe(0);
         });
 
         it('fails the queued interactions when the widget cannot be restored', async () => {
@@ -392,56 +400,83 @@ describe('widget router', () => {
         });
 
         it('acknowledges before a slow handler finishes', async () => {
-            const quick = new WidgetRouter(api, { acknowledgeAfter: 5 });
-            const widget = createWidget('abc123');
-            let respondedDuringHandler = false;
+            vi.useFakeTimers();
 
-            await quick.register(
-                {
-                    ...widget,
-                    async onAction(_action, context) {
-                        // Longer than the acknowledgement deadline.
-                        await new Promise((resolve) => setTimeout(resolve, 30));
+            try {
+                const quick = new WidgetRouter(api, { acknowledgeAfter: 5 });
+                const widget = createWidget('abc123');
+                let respondedDuringHandler = false;
 
-                        respondedDuringHandler = context.interaction.responded;
+                await quick.register(
+                    {
+                        ...widget,
+                        async onAction(_action, context) {
+                            // Longer than the acknowledgement deadline.
+                            await new Promise((resolve) =>
+                                setTimeout(resolve, 30),
+                            );
+
+                            respondedDuringHandler =
+                                context.interaction.responded;
+                        },
                     },
-                },
-                undefined,
-            );
+                    undefined,
+                );
 
-            await quick.handle(
-                asInteraction(createComponentInteraction('ui:abc123:confirm')),
-            );
+                const handled = quick.handle(
+                    asInteraction(
+                        createComponentInteraction('ui:abc123:confirm'),
+                    ),
+                );
 
-            expect(respondedDuringHandler).toBe(true);
-            expect(transport.requests).toHaveLength(1);
+                await vi.advanceTimersByTimeAsync(30);
+                await handled;
+
+                expect(respondedDuringHandler).toBe(true);
+                expect(transport.requests).toHaveLength(1);
+            } finally {
+                vi.useRealTimers();
+            }
         });
 
         it('leaves a handler that answers itself alone', async () => {
-            const quick = new WidgetRouter(api, { acknowledgeAfter: 5 });
-            const widget = createWidget('abc123');
-            let respondedDuringHandler = false;
+            vi.useFakeTimers();
 
-            await quick.register(
-                {
-                    ...widget,
-                    async onAction(_action, context) {
-                        await context.interaction.deferUpdate();
+            try {
+                const quick = new WidgetRouter(api, { acknowledgeAfter: 5 });
+                const widget = createWidget('abc123');
+                let respondedDuringHandler = false;
 
-                        await new Promise((resolve) => setTimeout(resolve, 20));
+                await quick.register(
+                    {
+                        ...widget,
+                        async onAction(_action, context) {
+                            await context.interaction.deferUpdate();
 
-                        respondedDuringHandler = true;
+                            await new Promise((resolve) =>
+                                setTimeout(resolve, 20),
+                            );
+
+                            respondedDuringHandler = true;
+                        },
                     },
-                },
-                undefined,
-            );
+                    undefined,
+                );
 
-            await quick.handle(
-                asInteraction(createComponentInteraction('ui:abc123:confirm')),
-            );
+                const handled = quick.handle(
+                    asInteraction(
+                        createComponentInteraction('ui:abc123:confirm'),
+                    ),
+                );
 
-            expect(respondedDuringHandler).toBe(true);
-            expect(transport.requests).toHaveLength(1);
+                await vi.advanceTimersByTimeAsync(20);
+                await handled;
+
+                expect(respondedDuringHandler).toBe(true);
+                expect(transport.requests).toHaveLength(1);
+            } finally {
+                vi.useRealTimers();
+            }
         });
     });
 

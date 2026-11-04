@@ -201,6 +201,9 @@ describe('request shape', () => {
         expect(request?.route).toBe(
             '/webhooks/{application_id}/{interaction_token}/messages/{message_id}',
         );
+        expect(decodeURIComponent(request?.url ?? '')).toContain(
+            '/webhooks/app-1/token-1/messages/@original',
+        );
     });
 
     it('defers a queued interaction before it waits for the widget', async () => {

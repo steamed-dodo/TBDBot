@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Cache } from '../../src/cache/index';
 import { MemoryStore } from '../../src/store/index';
@@ -38,14 +38,31 @@ describe('cache', () => {
     });
 
     it('expires entries whose lifetime has elapsed', async () => {
-        const cache = new Cache({
-            autoSweep: false,
-            kinds: { roles: { enabled: true, ttl: -1 } },
-        });
+        vi.useFakeTimers();
+        vi.setSystemTime(1_700_000_000_000);
 
-        await cache.set('roles', 'guild-1', { id: 'guild-1' });
+        try {
+            const cache = new Cache({
+                autoSweep: false,
+                kinds: { roles: { enabled: true, ttl: 1_000 } },
+            });
 
-        expect(await cache.get('roles', 'guild-1')).toBeUndefined();
+            await cache.set('roles', 'guild-1', { id: 'guild-1' });
+
+            // One millisecond before the deadline the entry is still valid.
+            vi.setSystemTime(1_700_000_000_999);
+
+            expect(await cache.get('roles', 'guild-1')).toEqual({
+                id: 'guild-1',
+            });
+
+            // At the deadline it is expired.
+            vi.setSystemTime(1_700_000_001_000);
+
+            expect(await cache.get('roles', 'guild-1')).toBeUndefined();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('removes the entries of a guild', async () => {
@@ -83,17 +100,29 @@ describe('cache', () => {
     });
 
     it('reclaims expired entries when it sweeps', async () => {
-        const store = new MemoryStore<string>();
-        const cache = new Cache({
-            store,
-            autoSweep: false,
-            kinds: { roles: { enabled: true, ttl: -1 } },
-        });
+        vi.useFakeTimers();
+        vi.setSystemTime(1_700_000_000_000);
 
-        await cache.set('roles', 'guild-1', { id: 'guild-1' });
-        await cache.sweep();
+        try {
+            const store = new MemoryStore<string>();
+            const cache = new Cache({
+                store,
+                autoSweep: false,
+                kinds: { roles: { enabled: true, ttl: 1_000 } },
+            });
 
-        expect(await store.get('roles:guild-1')).toBeUndefined();
+            await cache.set('roles', 'guild-1', { id: 'guild-1' });
+
+            expect(await store.get('roles:guild-1')).toBeDefined();
+
+            vi.setSystemTime(1_700_000_001_000);
+
+            await cache.sweep();
+
+            expect(await store.get('roles:guild-1')).toBeUndefined();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     describe('defects found in the second pass', () => {

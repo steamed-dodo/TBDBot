@@ -115,9 +115,11 @@ describe('redis store', () => {
         client: RedisLikeClient;
         values: Map<string, string>;
         scans: string[];
+        deleted: string[];
     } {
         const values = new Map<string, string>();
         const scans: string[] = [];
+        const deleted: string[] = [];
 
         const client: RedisLikeClient = {
             get: async (key) => values.get(key) ?? null,
@@ -125,6 +127,7 @@ describe('redis store', () => {
                 values.set(key, value);
             },
             del: async (key) => {
+                deleted.push(key);
                 values.delete(key);
             },
             scan: async (cursor, match) => {
@@ -150,7 +153,7 @@ describe('redis store', () => {
             },
         };
 
-        return { client, values, scans };
+        return { client, values, scans, deleted };
     }
 
     it('serialises values and strips the prefix', async () => {
@@ -181,7 +184,7 @@ describe('redis store', () => {
     });
 
     it('clears the store without a full listing', async () => {
-        const { client, values, scans } = createClient();
+        const { client, values, scans, deleted } = createClient();
         const store = new RedisStore<string>(client, 'tbd:');
 
         await store.set('a', 'value');
@@ -190,6 +193,7 @@ describe('redis store', () => {
         await store.clear();
 
         expect(values.size).toBe(0);
-        expect(scans.length).toBeGreaterThan(0);
+        expect(scans.length).toBeGreaterThan(1);
+        expect(deleted.sort()).toEqual(['tbd:a', 'tbd:b']);
     });
 });

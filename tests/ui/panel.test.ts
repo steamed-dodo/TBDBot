@@ -156,6 +156,15 @@ describe('panel manager', () => {
 
         router.expect('route123');
 
+        await router.handle(
+            createInteraction(
+                createComponentInteraction('ui:route123:refresh'),
+                api.interactions,
+            ),
+        );
+
+        expect(router.pendingCount).toBe(1);
+
         await store.save([
             {
                 id: 'panel-1',
@@ -171,6 +180,14 @@ describe('panel manager', () => {
 
         expect(router.pendingCount).toBe(0);
         expect(manager.get('panel-1')).toBeUndefined();
+
+        const failure = transport.requests.at(-1);
+
+        expect(failure?.method).toBe('PATCH');
+        expect(failure?.url).toContain('/webhooks/');
+        expect(failure?.body).toMatchObject({
+            content: 'This panel is no longer available.',
+        });
     });
 
     it('removes a panel and forgets its record', async () => {
@@ -183,6 +200,13 @@ describe('panel manager', () => {
         expect(manager.get('panel-1')).toBeUndefined();
         expect(router.get('route123')).toBeUndefined();
         expect(await store.load()).toHaveLength(0);
+
+        const request = transport.requests.at(-1);
+
+        expect(request?.method).toBe('DELETE');
+        expect(request?.url).toContain(
+            '/channels/channel-1/messages/message-1',
+        );
     });
 
     it('persists and restores a menu', async () => {
