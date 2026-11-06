@@ -23,6 +23,8 @@ npm run example:vertical-slice   # requires DISCORD_TOKEN and DISCORD_APPLICATIO
 - `src/index.ts` and each module's `index.ts` are barrels. Add every new public export to them; the package entrypoint is `src/index.ts` only.
 - Modules: `api/`, `cache/`, `commands/`, `config/`, `core/`, `interaction/`, `metrics/`, `permissions/`, `store/`, `testing/`, `ui/` (with `ui/menu`, `ui/modal`, `ui/panel`).
 - `tests/` mirrors the source module structure (`tests/<module>/*.test.ts`), plus `tests/type-safety.test.ts` for compile-time regressions. Fixtures live next to their tests (e.g. `tests/config/fixtures/`).
+- `.opencode/` holds the project agents and commands for the bug pipeline: `/hunt`, `/verify`, `/fix`, and `/triage`.
+- `findings/` is the bug ledger (see `findings/README.md`). One file per finding; only `bug-validator` confirms a finding and only `bug-fixer` fixes confirmed findings.
 - `docs/` is generated Typedoc output and is committed for GitHub Pages. Never edit it by hand; change the JSDoc and run `npm run docs`.
 - `scripts/rewrite-declarations.mjs` appends `.js` to relative specifiers in emitted `.d.ts` files. Source imports stay extensionless; don't add extensions to source specifiers to work around it.
 - `dist/` is build output and is not committed.
@@ -50,3 +52,4 @@ npm run example:vertical-slice   # requires DISCORD_TOKEN and DISCORD_APPLICATIO
 - History uses Conventional Commits with module scopes: `fix(cache): ...`, `feat(ui): ...`, plus `docs:`, `test:`, `refactor:`, and `chore:`.
 - `main` is the only long-lived branch; ask before creating a branch.
 - Keep commits focused: one behavior change or fix per commit, with its tests, and keep documentation/refactor commits separate.
+- Commit a finding's status change with the fix it describes; commit new candidate or rejection batches as their own `docs(findings)` commit.
